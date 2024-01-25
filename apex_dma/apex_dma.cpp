@@ -22,7 +22,7 @@
 #include <unistd.h>
 #include <unordered_map> // Include the unordered_map header
 #include <vector>
-#include <fstream>
+#include <mutex>
 // this is a test, with seconds
 Memory apex_mem;
 
@@ -41,8 +41,7 @@ int glowtype2;
 // float triggerdist = 50.0f;
 bool actions_t = false;
 bool cactions_t = false;
-bool updateInsideValue_t = false;
-bool TriggerBotRun_t = false;
+//bool TriggerBotRun_t = false;
 bool terminal_t = false;
 bool overlay_t = false;
 bool esp_t = false;
@@ -98,6 +97,26 @@ void rainbowColor(int frame_number, std::array<float, 3> &colors) {
   colors[0] = fmax(0, fmin(1, r));
   colors[1] = fmax(0, fmin(1, g));
   colors[2] = fmax(0, fmin(1, b));
+}
+
+float calc_target_score(float fov, float distance, bool visible){
+    // Reduce weight for invisible targets
+    const float VIS_WEIGHTS = 12.5;
+    // Increase weight for targets that are too close
+    const float CLOSE_WEIGHTS = 30.0 * 30.0 * 100.0; // equals to 30 fov
+
+    float score = (fov * fov) * 100.0f
+        + (distance * 0.025f) * 10.0f
+        + (visible ? 0.0f : VIS_WEIGHTS)
+        + (distance < 3.0f * 40.0f ? 0.0f : CLOSE_WEIGHTS);
+    /*
+     fov:dist:score
+      1  10m  100
+      2  40m  400
+      3  90m  900
+      4  160m 1600
+    */
+    return score;
 }
 
 void TriggerBotRun() {
@@ -175,8 +194,6 @@ void MapRadarTesting() { //为什么这能把雷达搞出来...不就来回写�
 
 uint64_t PlayerLocal;
 int PlayerLocalTeamID;
-int EntTeam;
-int LocTeam;
 
 void ClientActions() {
   cactions_t = true;
@@ -229,13 +246,6 @@ void ClientActions() {
                                 traversal_progress)) {
         memory_io_panic("read traversal_progress");
       }
-
-      //   printf("Travel Time: %f\n", traversal_progress);
-      //   printf("Cur Frame: %i\n", curFrameNumber);
-      //   printf("Jump Value: %i\n", jump_state);
-      //   printf("Jump Value: %i\n", force_jump);
-      //   printf("ToggleDuck Value: %i\n", force_toggle_duck);
-      //   printf("Duck Value: %i\n", force_duck);
       if (g_settings.auto_tapstrafe){
           bool ts_start = true;
           //autoTapstrafe
@@ -402,8 +412,6 @@ void ClientActions() {
         }
       }
 
-      // printf("Minimap: %ld\n", minimap);
-      // apex_mem.Write(LocalPlayer + 0x270 , 1);
 
       /*
       108 Left mouse button (mouse1)
@@ -608,9 +616,8 @@ void ControlLoop() {//根据观战人数闪烁键盘背光
   control_t = true;
   while (control_t) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    spectatorsMtx.lock();
+    std::lock_guard<std::mutex> lock(spectatorsMtx);
     int spec_count = spectators.size();
-    spectatorsMtx.unlock();
     if (spec_count > 0) {
       kbd_backlight_blink(spec_count);
       std::this_thread::sleep_for(std::chrono::milliseconds(10 * 1000 - 100));
@@ -623,7 +630,6 @@ void ControlLoop() {//根据观战人数闪烁键盘背光
 void SetPlayerGlow(Entity &LPlayer, Entity &Target, int index,
                    int frame_number) {
   const auto g_settings = global_settings();
-  //int context_id = 0;
   int setting_index = 0;
   std::array<float, 3> highlight_parameter = {0, 0, 0};
 
@@ -673,10 +679,7 @@ void SetPlayerGlow(Entity &LPlayer, Entity &Target, int index,
         }
       }
       // love player glow
-      if (g_settings.player_glow_love_user) {
-        auto it = centity_to_index.find(Target.ptr);
-        if (it != centity_to_index.end() &&
-            Target.check_love_player(it->second)) {
+      if (g_settings.player_glow_love_user && Target.check_love_player()) {
           int frame_frag = frame_number / ((int)g_settings.game_fps);
           if (setting_index == 81 ||
               frame_frag % 2 == 0) { // vis: always, else: 1s time slice
@@ -684,8 +687,6 @@ void SetPlayerGlow(Entity &LPlayer, Entity &Target, int index,
             rainbowColor(frame_number, highlight_parameter);    //返回一个rgb色彩到highlight_parameter
           }
         }
-      }
-
       // enable glow
       if (g_settings.player_glow) {     //如果设置里开了发光，就执行发光
         Target.enableGlow(setting_index, g_settings.player_glow_inside_value,
@@ -704,11 +705,12 @@ void ProcessPlayer(Entity &LPlayer, Entity &target, uint64_t entitylist,
 
   const auto g_settings = global_settings();
 
+  int local_team = LPlayer.getTeamId();
   int entity_team = target.getTeamId();
 
   if (!target.isAlive() || !LPlayer.isAlive()) {
     // Update yew to spec checker
-    tick_yew(target.ptr, target.GetYaw());
+    tick_yew(target.ptr, target.GetYaw());  //什么是yaw？tick_yew还是生成的wasm?
     // Exclude self from list when watching others
     if (target.ptr != LPlayer.ptr && is_spec(target.ptr)) {
       tmp_specs.insert(target.ptr);
@@ -720,22 +722,15 @@ void ProcessPlayer(Entity &LPlayer, Entity &target, uint64_t entitylist,
     return;
   }
 
-  if (g_settings.tdm_toggle) { // Check if the target entity is on the same
-                               // team as the
-                               // local player
-    // int entity_team = Target.getTeamId();
+  if (g_settings.tdm_toggle) { // 团队模式按奇偶分队伍
+                               // 若与玩家同队则不进行后续
     // printf("Target Team: %i\n", entity_team);
-
-    uint64_t PlayerLocal;
-    apex_mem.Read<uint64_t>(g_Base + OFFSET_LOCAL_ENT, PlayerLocal);
-    int PlayerLocalTeamID;
-    apex_mem.Read<int>(PlayerLocal + OFFSET_TEAM, PlayerLocalTeamID);
-
+    int EntTeam, LocTeam;
     if (entity_team % 2)
       EntTeam = 1;
     else
       EntTeam = 2;
-    if (PlayerLocalTeamID % 2)
+    if (local_team % 2)
       LocTeam = 1;
     else
       LocTeam = 2;
@@ -755,35 +750,30 @@ void ProcessPlayer(Entity &LPlayer, Entity &target, uint64_t entitylist,
       return;
     }
   }
-
+  if (target.ptr != LPlayer.ptr) {
   Vector EntityPosition = target.getPosition();
   Vector LocalPlayerPosition = LPlayer.getPosition();
   float dist = LocalPlayerPosition.DistTo(EntityPosition);
-
+  float fov = CalculateFov(LPlayer, target);
+  bool vis = target.lastVisTime() > lastvis_aim[index];
   // aim distance check
   if ((local_held_id == -251 && dist > g_settings.skynade_dist) ||
       dist > g_settings.aim_dist)
     return;
-
   // Targeting
-  const float vis_weights = 12.5f;
-  float fov = CalculateFov(LPlayer, target);
-  bool vis = target.lastVisTime() > lastvis_aim[index];
-  float score =
-      (fov * fov) * 100 + (dist * 0.025) * 10 + (vis ? 0 : vis_weights);
-  /*
-   fov:dist:score
-    1  10m  100
-    2  40m  400
-    3  90m  900
-    4  160m 1600
-  */
+  float score = calc_target_score(fov, dist, vis);
+
   if (score < aimbot.target_score_max) {
     aimbot.target_score_max = score;
     aimbot.tmp_aimentity = target.ptr;
   }
 
-  if (g_settings.aim == 2) {
+  if (aimbot.aimentity == target.ptr) {
+      if (g_settings.aim == 2 && local_held_id != -251) {
+          aimbot.gun_safety = !vis;
+      }
+  }
+  /*if (g_settings.aim == 2) {
     // vis check for shooting current aim entity
     if (local_held_id != -251 && aimbot.aimentity == target.ptr) {
       if (!vis) {
@@ -793,7 +783,7 @@ void ProcessPlayer(Entity &LPlayer, Entity &target, uint64_t entitylist,
         aimbot.gun_safety = false;
       }
     }
-
+    */
     // TriggerBot
     if (aimbot.aimentity != 0) {
       uint64_t LocalPlayer = 0;
@@ -807,8 +797,8 @@ void ProcessPlayer(Entity &LPlayer, Entity &target, uint64_t entitylist,
         TriggerBotRun();
       }
     }
-  }
   SetPlayerGlow(LPlayer, target, index, frame_number);
+  }
   lastvis_aim[index] = target.lastVisTime();
 }
 
@@ -884,8 +874,7 @@ void DoActions() {
       int frame_number = 0;
       apex_mem.Read<int>(g_Base + OFFSET_GLOBAL_VARS + 0x0008, frame_number);       //读取游戏的实际帧率
       std::set<uintptr_t> tmp_specs;
-      aimbot.target_score_max =
-          (50 * 50) * 100 + (g_settings.aim_dist * 0.025) * 10; //自瞄距离设200*40, 2500+2000?
+      aimbot.target_score_max = calc_target_score(50.0f, g_settings.aim_dist, false);
       aimbot.tmp_aimentity = 0;
       centity_to_index.clear();
       //tmp_specs.clear();
@@ -902,9 +891,9 @@ void DoActions() {
           }
 
           Entity Target = getEntity(centity);
-          if (!Target.isDummy() && !g_settings.onevone) {
+          if (!(Target.isDummy() || (g_settings.onevone && Target.isPlayer()))) {
             continue;
-          }
+          }//目标是假人或者（1v1 and 目标是玩家）则执行ProcessPlayer
 
           ProcessPlayer(LPlayer, Target, entitylist, c, frame_number, tmp_specs);
           c++;
@@ -930,60 +919,21 @@ void DoActions() {
       }
 
       { // refresh spectators count
-        // static uint32_t counter = 0;
-        // static std::map<uintptr_t, size_t> specs_test;
-        // if (counter < 10) {
-        //   auto tmp = tmp_specs;
-        //   for (auto it = specs_test.begin(); it != specs_test.end(); it++) {
-        //     if (tmp.extract(it->first).empty()) {
-        //       // it->second -= 1;
-        //     } else {
-        //       it->second += 1;
-        //     }
-        //   }
-        //   for (auto it = tmp.begin(); it != tmp.end(); it++) {
-        //     assert(!specs_test.contains(*it));
-        //     specs_test[*it] = 1;
-        //   }
-        // } else {
-        // std::vector<Entity> tmp_spec, tmp_all_spec;
-        // for (auto it = specs_test.begin(); it != specs_test.end(); it++) {
-        //   // if (it->second > counter / 2) {
-        //     Entity target = getEntity(it->first);
-        //     if (target.getTeamId() == team_player) {
-        //       tmp_all_spec.push_back(target);
-        //     } else {
-        //       tmp_spec.push_back(target);
-        //     }
-        //   // }
-        // }
-        // spectators = tmp_spec;
-        // allied_spectators = tmp_all_spec;
-
-        // specs_test.clear();
-        //  counter = 0;
-        // }
-        // counter++;
-
-          { // refresh spectators count
-
-              std::vector<Entity> tmp_spec, tmp_all_spec;
-              spectatorsMtx.lock();
-              for (auto it = tmp_specs.begin(); it != tmp_specs.end(); it++) {
-                  Entity target = getEntity(*it);
-                  if (target.getTeamId() == team_player) {
-                      tmp_all_spec.push_back(target);
-                  }
-                  else {
-                      tmp_spec.push_back(target);
-                  }
+          std::vector<Entity> tmp_spec, tmp_all_spec;
+          std::lock_guard<std::mutex> lock(spectatorsMtx);
+          for (auto it = tmp_specs.begin(); it != tmp_specs.end(); it++) {
+              Entity target = getEntity(*it);
+              if (target.getTeamId() == team_player) { //将队友添加到tmp_all_spec容器的末尾
+                  tmp_all_spec.push_back(target);
               }
-              spectators.clear();
-              allied_spectators.clear();
-              spectators = tmp_spec;
-              allied_spectators = tmp_all_spec;
-              spectatorsMtx.unlock();
+              else {
+                  tmp_spec.push_back(target); //不是队友就添加到tmp_spec
+              }
           }
+          //spectators.clear();
+          //allied_spectators.clear();
+          spectators = tmp_spec;
+          allied_spectators = tmp_all_spec;
       }
       // set current aim entity
       if (aimbot.lock) { // locked target
@@ -1182,17 +1132,16 @@ static void EspLoop() {
                                  localviewangle,
                                  targetyaw,
                                  Target.isAlive(),
-                                 Target.check_love_player(entity_index),
+                                 Target.check_love_player(),
                                  false};
               Target.get_name(g_Base, entity_index, &data_buf.name[0]);
-              spectatorsMtx.lock();
+              std::lock_guard<std::mutex> lock(spectatorsMtx);
               for (auto &ent : spectators) {
                 if (ent.ptr == centity) {
                   data_buf.is_spectator = true;
                   break;
                 }
               }
-              spectatorsMtx.unlock();
               players.push_back(data_buf);
               lastvis_esp[i] = Target.lastVisTime();
               valid = true;
@@ -1224,18 +1173,25 @@ static void AimbotLoop() {
   while (aim_t) {
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
     while (g_Base != 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
       const auto g_settings = global_settings();
 
       // Read LocalPlayer
       uint64_t LocalPlayer = 0;
       apex_mem.Read<uint64_t>(g_Base + OFFSET_LOCAL_ENT, LocalPlayer);
-
+      if (LocalPlayer == 0) {
+          continue;
+      }
+      Entity LPlayer = getEntity(LocalPlayer);
+      if (LPlayer.isKnocked()) {
+          cancel_targeting();
+          continue;
+      }
       // Read HeldID
       int HeldID;
       apex_mem.Read<int>(LocalPlayer + OFFSET_OFF_WEAPON, HeldID); // 0x1a1c
       local_held_id = HeldID;   //读取本地玩家手持物品id赋值给local_held_id
-
+      
       // Read WeaponID
       ulong ehWeaponHandle;
       apex_mem.Read<uint64_t>(LocalPlayer + OFFSET_ACTIVE_WEAPON,ehWeaponHandle);
@@ -1268,15 +1224,6 @@ static void AimbotLoop() {
           continue;
         }
 
-        Entity LPlayer = getEntity(LocalPlayer);
-        if (LocalPlayer == 0) {
-          continue;
-        }
-        if (LPlayer.isKnocked()) {
-          cancel_targeting();
-          continue;
-        }
-
         /* Fine-tuning for each weapon */
         // bow
         if (weaponID == 2) {
@@ -1293,7 +1240,6 @@ static void AimbotLoop() {
             continue;
           }
           LPlayer.SetViewAngles(Angles_g);
-
         } else {
           QAngle Angles = CalculateBestBoneAim(LPlayer, target, aimbot.max_fov, aimbot.smooth);
           if (Angles.x == 0 && Angles.y == 0) {
@@ -2019,8 +1965,7 @@ int main(int argc, char *argv[]) {
   std::thread actions_thr;
   std::thread cactions_thr;
   // Used to change things on a timer
-  // std::thread updateInsideValue_thr;
-  std::thread TriggerBotRun_thr;
+  //std::thread TriggerBotRun_thr;
   std::thread terminal_thr;
   std::thread overlay_thr;
   std::thread itemglow_thr;
@@ -2037,9 +1982,7 @@ int main(int argc, char *argv[]) {
         esp_t = false;
         actions_t = false;
         cactions_t = false;
-        // Used to change things on a timer
-        updateInsideValue_t = false;
-        TriggerBotRun_t = false;
+        //TriggerBotRun_t = false;
         terminal_t = false;
         overlay_t = false;
         item_t = false;
@@ -2052,8 +1995,7 @@ int main(int argc, char *argv[]) {
         actions_thr.~thread();
         cactions_thr.~thread();
         // Used to change things on a timer
-        // updateInsideValue_thr.~thread();
-        TriggerBotRun_thr.~thread();
+        //TriggerBotRun_thr.~thread();
         terminal_thr.~thread();
         overlay_thr.~thread();
         itemglow_thr.~thread();
@@ -2074,18 +2016,14 @@ int main(int argc, char *argv[]) {
         esp_thr = std::thread(EspLoop);
         actions_thr = std::thread(DoActions);
         cactions_thr = std::thread(ClientActions);
-        // Used to change things on a timer
-        // updateInsideValue_thr = std::thread(updateInsideValue);
-        TriggerBotRun_thr = std::thread(TriggerBotRun);
+        //TriggerBotRun_thr = std::thread(TriggerBotRun);
         itemglow_thr = std::thread(item_glow_t);
         control_thr = std::thread(ControlLoop);
         aimbot_thr.detach();
         esp_thr.detach();
         actions_thr.detach();
         cactions_thr.detach();
-        // Used to change things on a timer
-        // updateInsideValue_thr.detach();
-        TriggerBotRun_thr.detach();
+        //TriggerBotRun_thr.detach();
         itemglow_thr.detach();
         control_thr.detach();
       }

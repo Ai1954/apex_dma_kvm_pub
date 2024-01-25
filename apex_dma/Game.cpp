@@ -230,12 +230,13 @@ void Entity::glow_weapon_model(uint64_t g_Base, bool enable_glow,
   // printf("0x270=%d\n", val1);
 }
 
-bool Entity::check_love_player(uint64_t entity_index) {
-  if (global_settings().yuan_p) {
+bool Entity::check_love_player() {
+  if (global_settings().yuan_p) {   //什么是yuan_p..原作始终为false
     if (this->isDummy())
-      return true;
-  } else {
-    if (!this->isPlayer())
+      return true;  //开了yuan_p假人返回true
+  }
+  else {
+    if (!this->isPlayer())      //关了yuan_p实体不是玩家返回false
       return false;
   }
   uint64_t data_fid[4];
