@@ -29,6 +29,7 @@ struct Fade {
 class Entity {
 public:
   uint64_t ptr;
+  uint64_t entity_index;
   uint8_t buffer[0x3FF0];
   Vector getPosition();
   bool isDummy();
@@ -60,7 +61,7 @@ public:
   Vector getBonePosition(int id);
   Vector getBonePositionByHitbox(int id);
   bool Observing(uint64_t entitylist);
-  void get_name(uint64_t g_Base, uint64_t index, char *name);
+  void get_name(char *name);
   void glow_weapon_model(uint64_t g_Base, bool enable_glow,
                          std::array<float, 3> highlight_colors);
   bool check_love_player();

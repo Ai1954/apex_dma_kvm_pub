@@ -1134,7 +1134,7 @@ static void EspLoop() {
                                  Target.isAlive(),
                                  Target.check_love_player(),
                                  false};
-              Target.get_name(g_Base, entity_index, &data_buf.name[0]);
+              Target.get_name(data_buf.name);
               std::lock_guard<std::mutex> lock(spectatorsMtx);
               for (auto &ent : spectators) {
                 if (ent.ptr == centity) {
