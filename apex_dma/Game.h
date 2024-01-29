@@ -1,5 +1,5 @@
 #include "Math.h"
-#include "glowmode.h"
+#include "apex_sky.h"
 #include "memory.hpp"
 #include "offsets.h"
 #include "vector.h"
@@ -32,8 +32,8 @@ public:
   uint64_t entity_index;
   uint8_t buffer[0x3FF0];
   Vector getPosition();
-  bool isDummy();
-  bool isPlayer();
+  static bool isDummy(uintptr_t ptr);
+  static bool isPlayer(uintptr_t ptr);
   bool isKnocked();
   bool isAlive();
   float lastVisTime();
@@ -52,9 +52,9 @@ public:
   QAngle GetRecoil();
   Vector GetViewAnglesV();
   float GetYaw();
-  void enableGlow(int setting_index, uint8_t inside_value,
-                  uint8_t outline_size,
-                  std::array<float, 3> highlight_parameter);
+  void enableGlow(int setting_index, uint8_t inside_value, uint8_t outline_size,
+                  std::array<float, 3> highlight_color);
+  void disableGlow();
   float lastCrossHairTime();
   void SetViewAngles(SVector angles);
   void SetViewAngles(QAngle &angles);
@@ -62,9 +62,15 @@ public:
   Vector getBonePositionByHitbox(int id);
   bool Observing(uint64_t entitylist);
   void get_name(char *name);
-  void glow_weapon_model(uint64_t g_Base, bool enable_glow,
-                         std::array<float, 3> highlight_colors);
-  bool check_love_player();
+  void glow_weapon_model(bool enable_glow, bool enable_draw,
+                         std::array<float, 3> highlight_color);
+  LoveStatus check_love_player();
+  int xp_level();
+
+  // private:
+  bool is_player = false;
+  int player_xp_level = 0;
+  int read_xp_level();
 };
 
 class Item {
@@ -75,10 +81,11 @@ public:
   bool isItem();
   bool isBox();
   bool isTrap();
-  //bool isGlowing();
-  void enableGlow(int setting_index, uint8_t outline_size, std::array<float, 3> highlight_parameter);
-  //void disableGlow();
-  //void BlueGlow();
+  // bool isGlowing();
+  void enableGlow(std::array<unsigned char, 4> highlightFunctionBits,
+                  std::array<float, 3> highlightParameter, int settingIndex);
+  // void disableGlow();
+  void BlueGlow();
 };
 
 class WeaponXEntity {
@@ -117,6 +124,7 @@ struct ClientClass {
 typedef struct player {
   float dist = 0;
   int entity_team = 0;
+  bool is_teammate = false;
   float boxMiddle = 0;
   float h_y = 0;
   float width = 0;
@@ -129,15 +137,18 @@ typedef struct player {
   int shield = 0;
   // seer
   int maxshield = 0;
+  int xp_level = 0;
+  int32_t damage = -99;
   int armortype = 0;
   Vector EntityPosition;
   Vector LocalPlayerPosition;
   QAngle localviewangle;
   float targetyaw = 0;
   bool is_alive = true;
-  bool is_love = false;
+  LoveStatus is_love = LoveStatus::NORMAL;
   bool is_spectator = false;
   char name[33] = {0};
+
 } player;
 
 struct Matrix {
@@ -150,53 +161,30 @@ Item getItem(uintptr_t ptr);
 bool WorldToScreen(Vector from, float *m_vMatrix, int targetWidth,
                    int targetHeight, Vector &to);
 float CalculateFov(Entity &from, Entity &target);
-QAngle CalculateBestBoneAim(Entity &from, Entity &target, float max_fov, float smooth);
 void get_class_name(uint64_t entity_ptr, char *out_str);
 void charge_rifle_hack(uint64_t entity_ptr);
-
-enum weapon_id : int32_t {
-  idweapon_r301 = 0,
-  idweapon_sentinel = 1,
-  idweapon_bow = 2,
-  idsheila_stationary = 10,
-  idsheila = 56,
-  idweapon_rampage = 21,
-  idmelee,
-  idsnipers_mark = 76,
-  idweapon_alternator = 80,
-  idweapon_re45 = 81,
-  idweapon_charge_rifle = 83,
-  idweapon_devotion = 84,
-  idweapon_longbow = 85,
-  idweapon_havoc = 86,
-  idweapon_eva8 = 87,
-  idweapon_flatline = 88,
-  idweapon_g7_scout = 89,
-  idweapon_hemlock = 90,
-  idweapon_kraber = 91,
-  idweapon_lstar = 93,
-  idweapon_mastiff = 95,
-  idweapon_mozambique = 96,
-  idweapon_prowler = 101,
-  idweapon_peacekeeper = 103,
-  idweapon_r99 = 104,
-  idweapon_p2020 = 105,
-  idweapon_spitfire = 106,
-  idweapon_triple_take = 107,
-  idweapon_wingman = 109,
-  idweapon_volt = 110,
-  idweapon_3030_repeater = 111,
-  idweapon_car_smg = 112,
-  idweapon_nemesis = 113,
-  idthrowing_knife = 158,
-  idgrenade_thermite = 164,
-  idgrenade_frag = 165,
-  idgrenade_arc_star = 166,
-  idmax
-};
+aim_angles_t CalculateBestBoneAim(Entity &from, Entity &target,
+                                  const aimbot_state_t &aimbot);
 
 typedef struct {
   uint64_t item_id;
   Vector position;
   float distance;
 } TreasureClue;
+
+#pragma pack(push, 1)
+struct HighlightSetting_t {
+  unsigned char inner_function;   // 0x0
+  unsigned char outside_function; // 0x1
+  unsigned char outside_radius;   // 0x2
+  unsigned char state : 6;        // 0x3
+  unsigned char shouldDraw : 1;   // 0x3
+  unsigned char postProcess : 1;  // 0x3
+  float color1[3];                // 0x4
+  float color2[3];                // 0x10
+private:
+  char pad_1c[0x18];
+
+public:
+}; // Size: 0x34
+#pragma pack(pop)

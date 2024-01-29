@@ -1,8 +1,8 @@
+use obfstr::obfstr as s;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
-
-use crate::love_players::LovePlayer;
+use crate::{aimbot::AimbotSettings, love_players::LovePlayer};
 
 #[repr(C)]
 #[derive(Clone, Deserialize, Serialize, Debug)]
@@ -13,6 +13,7 @@ pub struct EspVisuals {
     pub health_bar: bool,
     pub shield_bar: bool,
     pub name: bool,
+    pub damage: bool,
 }
 
 #[repr(C)]
@@ -103,8 +104,8 @@ pub struct Loot {
     pub anvil_receiver: bool,
     pub doubletap_trigger: bool,
     pub dual_shell: bool,
-    pub kinetic_feeder:bool,
-    pub quickdraw_holster:bool,
+    pub kinetic_feeder: bool,
+    pub quickdraw_holster: bool,
     pub shotgunbolt1: bool,
     pub shotgunbolt2: bool,
     pub shotgunbolt3: bool,
@@ -155,6 +156,8 @@ pub struct Config {
     pub(crate) settings: Settings,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub(crate) love_player: Vec<LovePlayer>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) hate_player: Vec<LovePlayer>,
 }
 
 #[repr(C)]
@@ -167,16 +170,15 @@ pub struct Settings {
     pub yuan_p: bool,
     pub debug_mode: bool,
     pub super_key: bool,
-    pub keyboard: bool,
-    pub gamepad: bool,
+    pub aimbot_settings: AimbotSettings,
     pub aimbot_hot_key_1: i32,
     pub aimbot_hot_key_2: i32,
     pub trigger_bot_hot_key: i32,
     pub loot_filled_toggle: bool,
     pub player_filled_toggle: bool,
     pub super_key_toggle: bool,
-    pub super_grpple:bool,
-    pub auto_tapstrafe:bool,
+    pub super_grpple: bool,
+    pub auto_tapstrafe: bool,
     pub onevone: bool,
     pub tdm_toggle: bool,
     pub item_glow: bool,
@@ -185,13 +187,7 @@ pub struct Settings {
     pub player_glow_love_user: bool,
     pub weapon_model_glow: bool,
     pub kbd_backlight_control: bool,
-    pub bow_charge_rifle_aim: bool,
-    pub shotgun_auto_shot: bool,
     pub deathbox: bool,
-    pub aim_no_recoil: bool,
-    pub ads_fov: f32,
-    pub non_ads_fov: f32,
-    pub aim: i32,
     pub esp: bool,
     pub esp_visuals: EspVisuals,
     pub mini_map_radar: bool,
@@ -201,21 +197,12 @@ pub struct Settings {
     pub main_radar_map: bool,
     pub main_map_radar_dot_size1: i32,
     pub main_map_radar_dot_size2: i32,
-    pub aim_dist: f32,
     pub max_dist: f32,
     pub map_radar_testing: bool,
     pub show_aim_target: bool,
     pub game_fps: f32,
     pub calc_game_fps: bool,
-    pub no_nade_aim: bool,
     pub firing_range: bool,
-    pub bone: i32,
-    pub bone_nearest: bool,
-    pub bone_auto: bool,
-    pub headshot_dist: f32,
-    pub skynade_dist: f32,
-    pub smooth: f32,
-    pub skynade_smooth: f32,
     pub player_glow_inside_value: u8,
     pub player_glow_outline_size: u8,
     pub glow_r_not: f32,
@@ -237,10 +224,11 @@ impl Default for EspVisuals {
         Self {
             r#box: true,
             line: false,
-            distance: true,
-            health_bar: true,
-            shield_bar: true,
+            distance: false,
+            health_bar: false,
+            shield_bar: false,
             name: false,
+            damage: true,
         }
     }
 }
@@ -257,84 +245,84 @@ impl Default for Loot {
             goldbackpack: true,
             // Shield upgrades
             shieldupgrade1: false, // white
-            shieldupgrade2: false,  // blue
+            shieldupgrade2: true,  // blue
             shieldupgrade3: true,  // purple
             shieldupgrade4: true,  // gold
             shieldupgrade5: true,  // red
             shieldupgradehead1: false,
-            shieldupgradehead2: false,
-            shieldupgradehead3: false,
+            shieldupgradehead2: true,
+            shieldupgradehead3: true,
             shieldupgradehead4: true,
             shielddown1: false,
-            shielddown2: false,
-            shielddown3: false,
+            shielddown2: true,
+            shielddown3: true,
             shielddown4: true,
             // heaing and Misc
             accelerant: false,
-            phoenix: false,
+            phoenix: true,
             healthlarge: true,
             healthsmall: false,
             shieldbattsmall: false,
             shieldbattlarge: true,
             // Ammo
             sniperammo: false,
-            heavyammo: false,
-            lightammo: false,
-            energyammo: false,
+            heavyammo: true,
+            lightammo: true,
+            energyammo: true,
             shotgunammo: false,
             // Optics
             optic1xhcog: false,
             optic2xhcog: true,
             opticholo1x: false,
-            opticholo1x2x: false,
+            opticholo1x2x: true,
             opticthreat: false,
-            optic3xhcog: false,
-            optic2x4x: false,
+            optic3xhcog: true,
+            optic2x4x: true,
             opticsniper6x: false,
-            opticsniper4x8x: false,
+            opticsniper4x8x: true,
             opticsniperthreat: false,
             // Magazines
             sniperammomag1: false,
-            energyammomag1: false,
-            lightammomag1: false,
-            heavyammomag1: false,
+            energyammomag1: true,
+            lightammomag1: true,
+            heavyammomag1: true,
             sniperammomag2: false,
-            energyammomag2: false,
-            lightammomag2: false,
-            heavyammomag2: false,
+            energyammomag2: true,
+            lightammomag2: true,
+            heavyammomag2: true,
             sniperammomag3: false,
-            energyammomag3: false,
-            lightammomag3: false,
-            heavyammomag3: false,
-            sniperammomag4: true,
+            energyammomag3: true,
+            lightammomag3: true,
+            heavyammomag3: true,
+            sniperammomag4: false,
             energyammomag4: true,
             lightammomag4: true,
             heavyammomag4: true,
             // Attachments
             lasersight1: false,
-            lasersight2: false,
-            lasersight3: false,
+            lasersight2: true,
+            lasersight3: true,
             lasersight4: true,
             stocksniper1: false,
-            stocksniper2: false,
-            stocksniper3: false,
+            stocksniper2: true,
+            stocksniper3: true,
             stocksniper4: true,
             stockregular1: false,
-            stockregular2: false,
-            stockregular3: false,
+            stockregular2: true,
+            stockregular3: true,
             suppressor1: false,
-            suppressor2: false,
-            suppressor3: false,
-            turbo_charger: true,
-            skull_piecer: true,
-            hammer_point: false,
+            suppressor2: true,
+            suppressor3: true,
+            turbo_charger: false,
+            skull_piecer: false,
+            hammer_point: true,
             disruptor_rounds: true,
             boosted_loader: false,
             anvil_receiver: false,
             doubletap_trigger: false,
             dual_shell: false,
-            kinetic_feeder:false,
-            quickdraw_holster:false,
+            kinetic_feeder: false,
+            quickdraw_holster: false,
             shotgunbolt1: false,
             shotgunbolt2: false,
             shotgunbolt3: false,
@@ -353,26 +341,26 @@ impl Default for Loot {
             weapon_peacekeeper: false,
             weapon_mozambique: false,
             // Energy weapons
-            weapon_lstar: false,
-            weapon_nemesis: false,
+            weapon_lstar: true,
+            weapon_nemesis: true,
             weapon_havoc: false,
             weapon_devotion: false,
             weapon_triple_take: false,
             weapon_volt: false,
             // Heavy Weapons
-            weapon_flatline: false,
-            weapon_hemlock: false,
+            weapon_flatline: true,
+            weapon_hemlock: true,
             weapon_3030_repeater: false,
             weapon_rampage: false,
-            weapon_car_smg: false,
+            weapon_car_smg: true,
             // Light weapons
             weapon_p2020: false,
-            weapon_re45: false,
+            weapon_re45: true,
             weapon_g7_scout: false,
             weapon_alternator: false,
-            weapon_r99: false,
-            weapon_spitfire: false,
-            weapon_r301: false,
+            weapon_r99: true,
+            weapon_spitfire: true,
+            weapon_r301: true,
             // Snipers.. wingman is the odd one...and the bow..
             weapon_wingman: false,
             weapon_longbow: false,
@@ -395,36 +383,29 @@ impl Default for Settings {
             debug_mode: false, //Used to close menu,show debug info
             super_key: true,
             // Gamepad or Keyboard config, Only one true at once or it wont work.
-            keyboard: true,
-            gamepad: false,
+            aimbot_settings: AimbotSettings::default(),
             aimbot_hot_key_1: 108,
-            aimbot_hot_key_2: 79,
+            aimbot_hot_key_2: 109,
             // Done with Gamepad or Keyboard config
             // triggerbot?
             trigger_bot_hot_key: 81,
-            shotgun_auto_shot: true,
             // Terminal Stuff
-            loot_filled_toggle: false,
-            player_filled_toggle: false,
+            loot_filled_toggle: true,
+            player_filled_toggle: true,
             super_key_toggle: true,
             super_grpple: true,
-            auto_tapstrafe: true,
+            auto_tapstrafe: false,
             // end Terminal Stuff
             onevone: false,
             tdm_toggle: false,
-            item_glow: true,
-            player_glow: true,
-            player_glow_armor_color: false,
+            item_glow: false,
+            player_glow: false,
+            player_glow_armor_color: true,
             player_glow_love_user: true,
-            weapon_model_glow: true,
+            weapon_model_glow: false,
             kbd_backlight_control: false,
-            bow_charge_rifle_aim: false,
-            deathbox: true,
-            aim_no_recoil: false,
-            ads_fov: 7.0, // Fov you want to use while aiming
-            non_ads_fov: 16.0,
-            aim: 2, // 0 no aim, 1 aim with no vis check, 2 aim with vis check
-            esp: false,
+            deathbox: false,
+            esp: true,
             esp_visuals: EspVisuals::default(),
             mini_map_radar: true,
             mini_map_guides: true,
@@ -433,33 +414,23 @@ impl Default for Settings {
             main_radar_map: false, // if the Main Map Radar is enabled
             main_map_radar_dot_size1: 5,
             main_map_radar_dot_size2: 5,
-            aim_dist: 200.0 * 40.0,
             max_dist: 3800.0 * 40.0, // Max Distance of ESP 3800 is full map
             map_radar_testing: false,
             show_aim_target: true,
-            game_fps: 143.0,       // Game FPS for aim prediction
+            game_fps: 75.0,       // Game FPS for aim prediction
             calc_game_fps: false, // Automatic calculation of game fps
-            // aimbot for nades on or off
-            no_nade_aim: true,  //Right click to nade-aim to true
             firing_range: false,
-            bone: 2, // bone 0 head, 1 neck, 2 chest, 3 dick shot
-            bone_nearest: false,
-            bone_auto: true,
-            headshot_dist: 250.0 * 40.0,
-            skynade_dist: 120.0 * 40.0,
-            smooth: 120.0, // min 85 no beaming, 100 somewhat beam people, 125 should be safe
-            skynade_smooth: 120.0 * 0.6667,
             // Player Glow Color and Brightness.
             // inside fill
             player_glow_inside_value: 14, // 0 = no fill, 14 = full fill
             player_glow_outline_size: 32, // 0-255
             // Not Visable
-            glow_r_not: 0.0, // Red 0-1, higher is brighter color.
-            glow_g_not: 1.0,
+            glow_r_not: 1.0, // Red 0-1, higher is brighter color.
+            glow_g_not: 0.0,
             glow_b_not: 0.0,
             // Visable
-            glow_r_viz: 1.0,
-            glow_g_viz: 0.0,
+            glow_r_viz: 0.0,
+            glow_g_viz: 1.0,
             glow_b_viz: 0.0,
             // Knocked
             glow_r_knocked: 0.80,
@@ -481,21 +452,22 @@ impl Default for Config {
         Self {
             settings: Default::default(),
             love_player: Default::default(),
+            hate_player: Default::default(),
         }
     }
 }
 
 pub fn get_config_path() -> PathBuf {
-    let base_path = std::env::current_dir().expect("Failed to determine the current directory");
+    let base_path = std::env::current_dir().expect(s!("Failed to determine the current directory"));
     let configuration_directory = base_path;
-    configuration_directory.join("settings.toml")
+    configuration_directory.join(s!("settings.toml"))
 }
 
 pub fn get_configuration() -> Result<Config, config::ConfigError> {
     let settings = config::Config::builder()
         .add_source(config::Config::try_from::<Config>(&Config::default())?)
         .add_source(config::File::from(get_config_path()))
-        .add_source(config::Environment::with_prefix("APP"))
+        .add_source(config::Environment::with_prefix(s!("APP")))
         .build()?;
 
     settings.try_deserialize::<Config>()

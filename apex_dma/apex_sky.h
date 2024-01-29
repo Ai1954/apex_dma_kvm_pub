@@ -2,16 +2,69 @@
 
 #include <cstdint>
 
-typedef struct aimbot_state_t {
-  bool aiming = false;
-  bool gun_safety = true;
-  bool lock = false;
-  float max_fov = 10;
-  float smooth = 120;
+typedef struct {
+  bool gamepad;
+  int32_t aim_mode;
+  bool auto_shoot;
+  float ads_fov;
+  float non_ads_fov;
+  bool auto_nade_aim;
+  bool no_recoil;
+  int32_t bone;
+  bool bone_nearest;
+  bool bone_auto;
+  float max_dist;
+  float aim_dist;
+  float headshot_dist;
+  float skynade_dist;
+  float smooth;
+  float skynade_smooth;
+  float recoil_smooth_x;
+  float recoil_smooth_y;
+} aimbot_settings_t;
+
+typedef struct {
+  bool valid;
+  float view_pitch;
+  float view_yew;
+  float delta_pitch;
+  float delta_yew;
+  float delta_pitch_min;
+  float delta_pitch_max;
+  float delta_yew_min;
+  float delta_yew_max;
+  float distance;
+} aim_angles_t;
+
+typedef struct {
+  aimbot_settings_t settings;
+  bool aiming;
+  bool gun_safety;
+  bool lock;
+  int32_t attack_state;
+  int32_t zoom_state;
+  int32_t aim_key_state;
+  int32_t triggerbot_key_state;
+  int32_t held_id;
+  int32_t weapon_id;
+  float bullet_speed;
+  float bullet_gravity;
+  float weapon_zoom_fov;
+  int weapon_mod_bitfield;
+  bool weapon_grenade;
+  bool weapon_headshot;
+  bool weapon_semi_auto;
+  float max_fov;
   float target_score_max;
-  uintptr_t aimentity = 0;
-  uintptr_t tmp_aimentity = 0;
-  uintptr_t locked_aimentity = 0;
+  uintptr_t local_entity;
+  uintptr_t aim_entity;
+  uintptr_t tmp_aimentity;
+  uintptr_t locked_aimentity;
+  bool love_aimentity;
+  float game_fps;
+  int triggerbot_state;
+  uint64_t triggerbot_trigger_time;
+  uint64_t triggerbot_release_time;
 } aimbot_state_t;
 
 typedef struct {
@@ -21,6 +74,7 @@ typedef struct {
   bool healthbar;
   bool shieldbar;
   bool name;
+  bool damage;
 } visuals;
 
 typedef struct {
@@ -164,8 +218,7 @@ typedef struct {
   bool yuan_p;
   bool debug_mode;
   bool super_key;
-  bool keyboard;
-  bool gamepad;
+  aimbot_settings_t aimbot_settings;
   int aimbot_hot_key_1;
   int aimbot_hot_key_2;
   int trigger_bot_hot_key;
@@ -182,13 +235,7 @@ typedef struct {
   bool player_glow_love_user;
   bool weapon_model_glow;
   bool kbd_backlight_control;
-  bool bow_charge_rifle_aim;
-  bool shotgun_auto_shot;
   bool deathbox;
-  bool aim_no_recoil;
-  float ads_fov;
-  float non_ads_fov;
-  int32_t aim;
   bool esp;
   visuals esp_visuals;
   bool mini_map_radar;
@@ -198,21 +245,12 @@ typedef struct {
   bool main_radar_map;
   int32_t main_map_radar_dot_size1;
   int32_t main_map_radar_dot_size2;
-  float aim_dist;
   float max_dist;
   bool map_radar_testing;
   bool show_aim_target;
   float game_fps;
   bool calc_game_fps;
-  bool no_nade_aim;
   bool firing_range;
-  int32_t bone;
-  bool bone_nearest;
-  bool bone_auto;
-  float headshot_dist;
-  float skynade_dist;
-  float smooth;
-  float skynade_smooth;
   uint8_t player_glow_inside_value;
   uint8_t player_glow_outline_size;
   float glow_r_not;
@@ -232,12 +270,103 @@ typedef struct {
 typedef struct {
   settings_t settings;
   bool terminal_t;
+  bool tui_forceupdate;
 } global_state_t;
 
 typedef struct {
   float x;
   float y;
-} vector2d_t;
+  float z;
+  float w;
+} vec4_t;
+
+typedef enum {
+  NORMAL = 0,
+  LOVE = 1,
+  HATE = 2,
+  AMBIVALENT = 3,
+} LoveStatus;
+
+typedef struct {
+  uintptr_t entitylist;
+  uintptr_t local_ent;
+  uintptr_t name_list;
+  uintptr_t global_vars;
+  uintptr_t levelname;
+  uintptr_t clientstate;
+  uintptr_t signonstate;
+  uintptr_t net_var_table;
+  uintptr_t host_map;
+  uintptr_t entity_team;
+  uintptr_t player_health;
+  uintptr_t entity_shield;
+  uintptr_t entity_maxshield;
+  uintptr_t player_duck_state;
+  uintptr_t player_lean_state;
+  uintptr_t player_grapple;
+  uintptr_t player_grapple_active;
+  uintptr_t player_xp;
+  uintptr_t player_net_var;
+  uintptr_t player_helmettype;
+  uintptr_t player_armortype;
+  uintptr_t player_controller_active;
+  uintptr_t player_skydive_state;
+  uintptr_t entiry_name;
+  uintptr_t entity_sign_name;
+  uintptr_t centity_abs_velocity;
+  uintptr_t visible_time;
+  uintptr_t player_zooming;
+  uintptr_t cplayer_traversal_progress;
+  uintptr_t cplayer_traversal_starttime;
+  uintptr_t player_platform_uid;
+  uintptr_t weaponx_weapon_name;
+  uintptr_t off_weapon;
+  uintptr_t cplayer_wall_run_start_time;
+  uintptr_t cplayer_wall_run_clear_time;
+  uintptr_t centity_flags;
+  uintptr_t in_attack;
+  uintptr_t in_backward;
+  uintptr_t in_toggle_duck;
+  uintptr_t in_zoom;
+  uintptr_t in_forward;
+  uintptr_t in_jump;
+  uintptr_t in_duck;
+  uintptr_t in_left;
+  uintptr_t in_right;
+  uintptr_t in_strafe;
+  uintptr_t in_use;
+  uintptr_t player_life_state;
+  uintptr_t player_bleed_out_state;
+  uintptr_t centity_viewoffset;
+  uintptr_t centity_origin;
+  uintptr_t bones;
+  uintptr_t studiohdr;
+  uintptr_t cplayer_aimpunch;
+  uintptr_t cplayer_camerapos;
+  uintptr_t player_viewangles;
+  uintptr_t breath_angles;
+  uintptr_t observer_mode;
+  uintptr_t ovserver_target;
+  uintptr_t view_matrix;
+  uintptr_t view_render;
+  uintptr_t primary_weapon;
+  uintptr_t active_weapon;
+  uintptr_t bullet_speed;
+  uintptr_t bullet_scale;
+  uintptr_t weaponx_zoom_fov;
+  uintptr_t weaponx_ammo_in_clip;
+  uintptr_t centity_modelname;
+  uintptr_t cplayer_timebase;
+  uintptr_t cplayer_viewmodels;
+  uintptr_t crosshair_last;
+  uintptr_t input_system;
+  uintptr_t weaponx_bitfield_from_player;
+  uintptr_t entity_fade_dist;
+  uintptr_t entity_highlight_generic_context;
+  uintptr_t grapple_attached;
+  uintptr_t grapple_pulling;
+  uintptr_t var_damage;
+} exported_offsets_t;
 
 extern "C" {
 void print_run_as_root();
@@ -251,25 +380,69 @@ bool save_settings();
 
 void run_tui_menu();
 
-bool check_love_player(uint64_t puid, uint64_t euid, const char *name);
+LoveStatus check_love_player(uint64_t puid, uint64_t euid, const char *name,
+                             uint64_t entity_ptr);
 
 void init_spec_checker(uintptr_t local_player_ptr);
 void tick_yew(uintptr_t target_ptr, float yew);
 bool is_spec(uintptr_t target_ptr);
 
-/**
- * https://github.com/CasualX/apexdream
- * LISENCE: GPLv3
- */
-vector2d_t skynade_angle(uint32_t weapon_id, uint32_t weapon_mod_bitfield,
-                         float weapon_projectile_scale,
-                         float weapon_projectile_speed,
-                         float local_view_origin_x, float local_view_origin_y,
-                         float local_view_origin_z, float target_x,
-                         float target_y, float target_z);
+aimbot_state_t aimbot_get_state();
+aimbot_settings_t aimbot_get_settings();
+void aimbot_settings(const aimbot_settings_t *settings);
+bool aimbot_is_aiming();
+bool aimbot_is_grenade();
+bool aimbot_is_headshot();
+bool aimbot_is_semi_auto();
+bool aimbot_is_locked();
+bool aimbot_is_triggerbot_ready();
+float aimbot_get_max_fov();
+int aimbot_get_held_id();
+void aimbot_update_held_id(int held_id);
+int aimbot_get_weapon_id();
+void aimbot_update_weapon_info(int weapon_id, float bullet_speed,
+                               float bullet_gravity, float weapon_zoom_fov,
+                               int weapon_mod_bitfield);
+bool aimbot_get_gun_safety();
+void aimbot_set_gun_safety(bool gun_safety);
+int aimbot_get_aim_key_state();
+void aimbot_update_aim_key_state(int aim_key_state);
+void aimbot_update_triggerbot_key_state(int triggerbot_key_state);
+void aimbot_update_attack_state(int attack_state);
+void aimbot_update_zoom_state(int zoom_state);
+uint64_t aimbot_get_aim_entity();
+bool aimbot_target_distance_check(float distance);
+void aimbot_start_select_target();
+void aimbot_add_select_target(float fov, float distance, bool visible,
+                              bool love, uint64_t target_ptr);
+void aimbot_finish_select_target();
+void aimbot_lock_target(uint64_t target_ptr);
+void aimbot_cancel_locking();
+void aimbot_update(uintptr_t local_entity, float game_fps);
+vec4_t aimbot_smooth_aim_angles(const aim_angles_t *aim_angles,
+                                float smooth_factor);
+int aimbot_poll_trigger_action();
+void aimbot_triggerbot_update(const aim_angles_t *aim_angles,
+                              int force_attack_state);
+
+vec4_t skynade_angle(uint32_t weapon_id, uint32_t weapon_mod_bitfield,
+                     float weapon_projectile_scale,
+                     float weapon_projectile_speed, float local_view_origin_x,
+                     float local_view_origin_y, float local_view_origin_z,
+                     float target_x, float target_y, float target_z);
+vec4_t linear_predict(float weapon_projectile_grav,
+                      float weapon_projectile_speed, float local_x,
+                      float local_y, float local_z, float target_x,
+                      float target_y, float target_z, float vel_x, float vel_y,
+                      float vel_z);
+
+exported_offsets_t import_offsets();
 }
 
 void load_settings();
 const settings_t global_settings();
 void update_settings(settings_t state);
-void quit_tui_menu();
+void tui_menu_quit();
+void tui_menu_forceupdate();
+
+const exported_offsets_t offsets = import_offsets();

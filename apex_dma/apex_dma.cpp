@@ -1,6 +1,7 @@
 #include "Client/main.h"
 #include "Game.h"
 #include "apex_sky.h"
+#include "lib/xorstr/xorstr.hpp"
 #include "vector.h"
 #include <array>
 #include <cassert>
@@ -10,11 +11,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib> // For the system() function
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <map>
-#include <random>
+#include <mutex>
 #include <set>
+#include <shared_mutex>
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
@@ -22,16 +25,13 @@
 #include <unistd.h>
 #include <unordered_map> // Include the unordered_map header
 #include <vector>
-#include <mutex>
 // this is a test, with seconds
 Memory apex_mem;
+extern const exported_offsets_t offsets;
 
 // Just setting things up, dont edit.
 bool active = true;
-aimbot_state_t aimbot;
-int team_player = 0;
-const int toRead = 100;
-bool trigger_ready = false;
+const int ENT_NUM = 10000;
 extern Vector aim_target; // for esp
 int map_testing_local_team = 0;
 
@@ -41,27 +41,22 @@ int glowtype2;
 // float triggerdist = 50.0f;
 bool actions_t = false;
 bool cactions_t = false;
-//bool TriggerBotRun_t = false;
 bool terminal_t = false;
 bool overlay_t = false;
 bool esp_t = false;
 bool aim_t = false;
-bool vars_t = false;
 bool item_t = false;
 bool control_t = false;
 uint64_t g_Base;
-bool next2 = false;
-bool valid = false;
 extern float bulletspeed;
 extern float bulletgrav;
-Vector esp_local_pos;
-int local_held_id = 2147483647;
-uint32_t local_weapon_id = 2147483647;
-int playerentcount = 61;
+Vector g_esp_local_pos;
 int itementcount = 10000;
 int map = 0;
 std::vector<TreasureClue> treasure_clues;
-std::map<uint64_t, uint64_t> centity_to_index; // Map centity to entity index
+std::map<int, float> lastvis_esp, lastvis_aim;
+size_t g_spectators = 0, g_allied_spectators = 0;
+std::mutex esp_mtx;
 
 //^^ Don't EDIT^^
 
@@ -78,8 +73,8 @@ bool isPressed(uint32_t button_code) {
 }
 
 void memory_io_panic(const char *info) {
-  quit_tui_menu();
-  std::cout << "Error " << info << std::endl;
+  tui_menu_quit();
+  std::cout << xorstr_("Error ") << info << std::endl;
   exit(0);
 }
 
@@ -99,101 +94,58 @@ void rainbowColor(int frame_number, std::array<float, 3> &colors) {
   colors[2] = fmax(0, fmin(1, b));
 }
 
-float calc_target_score(float fov, float distance, bool visible){
-    // Reduce weight for invisible targets
-    const float VIS_WEIGHTS = 12.5;
-    // Increase weight for targets that are too close
-    const float CLOSE_WEIGHTS = 30.0 * 30.0 * 100.0; // equals to 30 fov
-
-    float score = (fov * fov) * 100.0f
-        + (distance * 0.025f) * 10.0f
-        + (visible ? 0.0f : VIS_WEIGHTS)
-        + (distance < 3.0f * 40.0f ? 0.0f : CLOSE_WEIGHTS);
-    /*
-     fov:dist:score
-      1  10m  100
-      2  40m  400
-      3  90m  900
-      4  160m 1600
-    */
-    return score;
-}
-
 void TriggerBotRun() {
-  // 设置随机数生成器
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<> dis(150, 300);  // 正常或稍快的反应时间
-  // 生成随机时间间隔，防止行为检测
-  int randomInterval = dis(gen);
-  std::this_thread::sleep_for(std::chrono::milliseconds(randomInterval));
-  apex_mem.Write<int>(g_Base + OFFSET_IN_ATTACK + 0x8, 5);
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  apex_mem.Write<int>(g_Base + OFFSET_IN_ATTACK + 0x8, 4);
-  // printf("TriggerBotRun\n");
+  // testing
+  // apex_mem.Write<int>(g_Base + offsets.offset_in_attack + 0x8, 4);
+  // std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  apex_mem.Write<int>(g_Base + offsets.in_attack + 0x8, 5);
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  apex_mem.Write<int>(g_Base + offsets.in_attack + 0x8, 4);
+  // printf(xorstr_("TriggerBotRun\n"));
 }
-
-/*inline void AutoGrapple(uintptr_t LocalPlayerEntity)    //自动超级钩
-{
-    apex_mem.Write<int>(g_Base + OFFSET_IN_JUMP + 0x8, 4);
-    auto Gn = apex_mem.Read<int>(LocalPlayerEntity + OFFSET_GRAPPLE + OFFSET_GRAPPLE_ATTACHED);
-    if (Gn == 1) {
-        apex_mem.Write<int>(g_Base + OFFSET_IN_JUMP + 0x8, 5);
-    }
-}*/
 
 bool IsInCrossHair(Entity &target) {
   static uintptr_t last_t = 0;
   static float last_crosshair_target_time = -1.f;
   float now_crosshair_target_time = target.lastCrossHairTime();
-  bool is_trigger = false;
+  bool is_in_cross_hair = false;
   if (last_t == target.ptr) {
     if (last_crosshair_target_time != -1.f) {
       if (now_crosshair_target_time > last_crosshair_target_time) {
-        is_trigger = true;
-        // printf("Trigger\n");
+        is_in_cross_hair = true;
+        // printf(xorstr_("Trigger\n"));
         last_crosshair_target_time = -1.f;
       } else {
-        is_trigger = false;
+        is_in_cross_hair = false;
         last_crosshair_target_time = now_crosshair_target_time;
       }
     } else {
-      is_trigger = false;
+      is_in_cross_hair = false;
       last_crosshair_target_time = now_crosshair_target_time;
     }
   } else {
     last_t = target.ptr;
     last_crosshair_target_time = -1.f;
   }
-  return is_trigger;
+  return is_in_cross_hair;
 }
 
-// Visual check and aim check.?
-float lastvis_esp[toRead];
-float lastvis_aim[toRead];
-//std::set<uintptr_t> tmp_specs;
-std::vector<Entity> spectators, allied_spectators;
-std::mutex spectatorsMtx;
-
-void MapRadarTesting() { //为什么这能把雷达搞出来...不就来回写了一个地址
+void MapRadarTesting() { // 为什么这能把雷达搞出来...不就来回写了一个地址
   uintptr_t pLocal;
-  apex_mem.Read<uint64_t>(g_Base + OFFSET_LOCAL_ENT, pLocal);
+  apex_mem.Read<uint64_t>(g_Base + offsets.local_ent, pLocal);
   int dt;
-  apex_mem.Read<int>(pLocal + OFFSET_TEAM, dt);
+  apex_mem.Read<int>(pLocal + offsets.entity_team, dt);
   map_testing_local_team = dt;
 
   for (uintptr_t i = 0; i <= 80000; i++) {
-    apex_mem.Write<int>(pLocal + OFFSET_TEAM, 1);
+    apex_mem.Write<int>(pLocal + offsets.entity_team, 1);
   }
 
   for (uintptr_t i = 0; i <= 80000; i++) {
-    apex_mem.Write<int>(pLocal + OFFSET_TEAM, dt);
+    apex_mem.Write<int>(pLocal + offsets.entity_team, dt);
   }
   map_testing_local_team = 0;
 }
-
-uint64_t PlayerLocal;
-int PlayerLocalTeamID;
 
 void ClientActions() {
   cactions_t = true;
@@ -205,94 +157,119 @@ void ClientActions() {
 
       // read player ptr
       uint64_t local_player_ptr = 0;
-      apex_mem.Read<uint64_t>(g_Base + OFFSET_LOCAL_ENT, local_player_ptr);
+      apex_mem.Read<uint64_t>(g_Base + offsets.local_ent, local_player_ptr);
 
       // read game states
-      apex_mem.Read<typeof(button_state)>(g_Base + OFFSET_INPUT_SYSTEM + 0xb0, button_state);
-      int attack_state = 0, zoom_state = 0, jump_state = 0,backWardState = 0, curFrameNumber = 0,skyDriveState = 0,
-          duck_state = 0, force_foreward = 0, foreward_state = 0, flags = 0;
-      float wallrunStart = 0, wallrunClear = 0;
-      bool longclimb = false;
-      apex_mem.Read<int>(g_Base + OFFSET_IN_ATTACK, attack_state);     // 108开火
-      apex_mem.Read<int>(g_Base + OFFSET_IN_ZOOM, zoom_state);         // 109瞄准
-      apex_mem.Read<int>(g_Base + OFFSET_IN_JUMP, jump_state);         //跳跃状态
-      apex_mem.Read<int>(g_Base + OFFSET_IN_BACKWARD, backWardState);  //后退状态
-      apex_mem.Read<int>(g_Base + OFFSET_GLOBAL_VARS + 0x0008, curFrameNumber); // GlobalVars + 0x0008
-      apex_mem.Read<int>(local_player_ptr + OFFSET_FLAGS, flags);  //玩家空间状态？
-      apex_mem.Read<float>(local_player_ptr + OFFSET_WALLRUNSTART, wallrunStart);
-      apex_mem.Read<float>(local_player_ptr + OFFSET_WALLRUNCLEAR, wallrunClear);
-      apex_mem.Read<int>(local_player_ptr + OFFSET_SKYDRIVESTATE, skyDriveState); //跳伞状态
-      apex_mem.Read<int>(local_player_ptr + OFFSET_IN_DUCKSTATE, duck_state);  //玩家下蹲状态
-      apex_mem.Read<int>(g_Base + OFFSET_IN_FORWARD, foreward_state);  //前进状态
-      apex_mem.Read<int>(g_Base + OFFSET_IN_FORWARD + 0x8, force_foreward);  //前进按键
+      apex_mem.Read<typeof(button_state)>(g_Base + offsets.input_system + 0xb0,
+                                          button_state);
 
-      //apex_mem.Read<int>(g_Base + OFFSET_IN_TOGGLE_DUCK, tduck_state); // 切换下蹲
-      //apex_mem.Read<int>(g_Base + OFFSET_IN_TOGGLE_DUCK + 0x8, force_toggle_duck); //切换蹲起按键
-      //apex_mem.Read<int>(g_Base + OFFSET_IN_JUMP + 0x8, force_jump);
-      //apex_mem.Read<int>(g_Base + OFFSET_IN_DUCK + 0x8, force_duck); //下蹲按键
+      int attack_state = 0, zoom_state = 0, tduck_state = 0, jump_state = 0,
+          backward_state = 0, forward_state = 0, skydrive_state = 0,
+          force_jump = 0, force_toggle_duck = 0, force_duck = 0,
+          force_forward = 0, curFrameNumber = 0, flags = 0, duck_state = 0;
+      float wallrun_start = 0.0f, wallrun_clear = 0.0f;
+      bool longclimb = false;
+      apex_mem.Read<int>(g_Base + offsets.in_attack,
+                         attack_state);                         // 108
+      apex_mem.Read<int>(g_Base + offsets.in_zoom, zoom_state); // 109
+      apex_mem.Read<int>(g_Base + offsets.in_toggle_duck,
+                         tduck_state); // 61
+      apex_mem.Read<int>(g_Base + offsets.in_jump, jump_state);
+
+      apex_mem.Read<int>(g_Base + offsets.in_jump + 0x8, force_jump);
+      apex_mem.Read<int>(g_Base + offsets.in_toggle_duck + 0x8,
+                         force_toggle_duck);
+      apex_mem.Read<int>(g_Base + offsets.in_duck + 0x8, force_duck);
+      apex_mem.Read<int>(g_Base + offsets.in_backward,
+                         backward_state); // 后退状态
+      apex_mem.Read<int>(local_player_ptr + offsets.centity_flags,
+                         flags); // 玩家空间状态？
+      apex_mem.Read<float>(local_player_ptr +
+                               offsets.cplayer_wall_run_start_time,
+                           wallrun_start);
+      apex_mem.Read<float>(local_player_ptr +
+                               offsets.cplayer_wall_run_clear_time,
+                           wallrun_clear);
+      apex_mem.Read<int>(local_player_ptr + offsets.player_skydive_state,
+                         skydrive_state); // 跳伞状态
+      apex_mem.Read<int>(local_player_ptr + offsets.player_duck_state,
+                         duck_state); // 玩家下蹲状态
+      apex_mem.Read<int>(g_Base + offsets.in_forward,
+                         forward_state); // 前进状态
+      apex_mem.Read<int>(g_Base + offsets.in_forward + 0x8,
+                         force_forward); // 前进按键
+      apex_mem.Read<int>(g_Base + offsets.global_vars + 0x0008,
+                         curFrameNumber); // GlobalVars + 0x0008
+
       float world_time, traversal_start_time, traversal_progress;
-      if (!apex_mem.Read<float>(local_player_ptr + OFFSET_TIME_BASE, world_time)) {
-        //memory_io_panic("read time_base");
+      if (!apex_mem.Read<float>(local_player_ptr + offsets.cplayer_timebase,
+                                world_time)) {
+        // memory_io_panic(xorstr_("read time_base"));
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         break;
       }
-      if (!apex_mem.Read<float>(local_player_ptr + OFFSET_TRAVERSAL_STARTTIME,
+      if (!apex_mem.Read<float>(local_player_ptr +
+                                    offsets.cplayer_traversal_starttime,
                                 traversal_start_time)) {
-        // memory_io_panic("read traversal_starttime");
+        // memory_io_panic(xorstr_("read traversal_starttime"));
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         break;
       }
-      if (!apex_mem.Read<float>(local_player_ptr + OFFSET_TRAVERSAL_PROGRESS,
+      if (!apex_mem.Read<float>(local_player_ptr +
+                                    offsets.cplayer_traversal_progress,
                                 traversal_progress)) {
-        memory_io_panic("read traversal_progress");
+        memory_io_panic(xorstr_("read traversal_progress"));
       }
-      if (g_settings.auto_tapstrafe){
-          bool ts_start = true;
-          //autoTapstrafe
-          if (wallrunStart > wallrunClear) {
-              float climbTime = world_time - wallrunStart;
-              if (climbTime > 0.8) {
-                  longclimb = true;
-                  ts_start = false;
-              }
-              else
-              {
-                  ts_start = true;
-              }
+
+      //   printf("Travel Time: %f\n", traversal_progress);
+      //   printf("Cur Frame: %i\n", curFrameNumber);
+      //   printf("Jump Value: %i\n", jump_state);
+      //   printf("Jump Value: %i\n", force_jump);
+      //   printf("ToggleDuck Value: %i\n", force_toggle_duck);
+      //   printf("Duck Value: %i\n", force_duck);
+      if (g_settings.auto_tapstrafe) {
+        bool ts_start = true;
+        // autoTapstrafe
+        if (wallrun_start > wallrun_clear) {
+          float climbTime = world_time - wallrun_start;
+          if (climbTime > 0.8) {
+            longclimb = true;
+            ts_start = false;
+          } else {
+            ts_start = true;
           }
-          if (ts_start) {
-              if (longclimb) {
-                  if (world_time > wallrunClear + 0.1)
-                      longclimb = false;
-              }
-              //printf("longclimb:%d\n", longclimb);
-              //printf("duck_state:%d"\n, duck_state); 向下蹲1 完全蹲下2 起身过程3 其他0
-              //printf("jump_state:%d"\n, jump_state); 按着跳跃65 其他0
-              //printf("foreward_state:%d"\n, foreward_state); 按w时33，其他0 滚轮前进不触发
-              //printf("flags:%d"\n, flags);  空中状态64 蹲下67 站立65
-              //printf("force_foreward :%d\n", force_foreward);按下w是1 其他0
-              //printf("force_jump :%d\n", force_jump);按着跳跃5 其他4
-              // when player is in air  and  not skydrive    and  not longclimb and not backward
-              if (((flags & 0x1) == 0) && !(skyDriveState > 0) && !longclimb && !(backWardState > 0))
-              {
-                  if (((duck_state > 0) && (foreward_state == 33))) { //previously 33
-                      if (force_foreward == 0) {
-                          apex_mem.Write<int>(g_Base + OFFSET_IN_FORWARD + 0x8, 1);
-                      }
-                      else {
-                          apex_mem.Write<int>(g_Base + OFFSET_IN_FORWARD + 0x8, 0);
-                      }
-                  }
-              }
-              else if ((flags & 0x1) != 0) {
-                  if (foreward_state == 0) {
-                      apex_mem.Write<int>(g_Base + OFFSET_IN_FORWARD + 0x8, 0);
-                  }
-                  else if (foreward_state == 33) {
-                      apex_mem.Write<int>(g_Base + OFFSET_IN_FORWARD + 0x8, 1);
-                  }
-              }
+        }
+        if (ts_start) {
+          if (longclimb) {
+            if (world_time > wallrun_clear + 0.1)
+              longclimb = false;
           }
+          // printf("longclimb:%d\n", longclimb);
+          // printf("duck_state:%d"\n, duck_state); 向下蹲1 完全蹲下2 起身过程3
+          // 其他0 printf("jump_state:%d"\n, jump_state); 按着跳跃65 其他0
+          // printf("foreward_state:%d"\n, foreward_state); 按w时33，其他0
+          // 滚轮前进不触发 printf("flags:%d"\n, flags);  空中状态64 蹲下67
+          // 站立65 printf("force_foreward :%d\n", force_foreward);按下w是1
+          // 其他0 printf("force_jump :%d\n", force_jump);按着跳跃5 其他4
+          //  when player is in air  and  not skydrive    and  not longclimb and
+          //  not backward
+          if (((flags & 0x1) == 0) && !(skydrive_state > 0) && !longclimb &&
+              !(backward_state > 0)) {
+            if (((duck_state > 0) && (forward_state == 33))) { // previously 33
+              if (force_forward == 0) {
+                apex_mem.Write<int>(g_Base + offsets.in_forward + 0x8, 1);
+              } else {
+                apex_mem.Write<int>(g_Base + offsets.in_forward + 0x8, 0);
+              }
+            }
+          } else if ((flags & 0x1) != 0) {
+            if (forward_state == 0) {
+              apex_mem.Write<int>(g_Base + offsets.in_forward + 0x8, 0);
+            } else if (forward_state == 33) {
+              apex_mem.Write<int>(g_Base + offsets.in_forward + 0x8, 1);
+            }
+          }
+        }
       }
       ////// bunny hop
       /*
@@ -352,7 +329,7 @@ void ClientActions() {
 
         if (hang_on_wall > hang_start) {
           if (hang_on_wall < hang_cancel) {
-            apex_mem.Write<int>(g_Base + OFFSET_IN_JUMP + 0x8, 4);
+            apex_mem.Write<int>(g_Base + offsets.in_jump + 0x8, 4);
           }
           if (traversal_progress > trav_start && hang_on_wall < hang_max &&
               !start_sg) {
@@ -369,11 +346,12 @@ void ClientActions() {
         if (start_sg) {
           // press button
           // g_logger += "sg Press jump\n";
-          apex_mem.Write<int>(g_Base + OFFSET_IN_JUMP + 0x8, 5);
+          apex_mem.Write<int>(g_Base + offsets.in_jump + 0x8, 5);
 
           float current_time;
           while (true) {
-            if (apex_mem.Read<float>(local_player_ptr + OFFSET_TIME_BASE,
+            if (apex_mem.Read<float>(local_player_ptr +
+                                         offsets.cplayer_timebase,
                                      current_time)) {
               if (current_time - start_jump_time < action_interval) {
                 // keep looping
@@ -382,10 +360,10 @@ void ClientActions() {
               }
             }
           }
-          apex_mem.Write<int>(g_Base + OFFSET_IN_DUCK + 0x8, 6);
+          apex_mem.Write<int>(g_Base + offsets.in_duck + 0x8, 6);
           std::this_thread::sleep_for(std::chrono::milliseconds(release_wait));
-          apex_mem.Write<int>(g_Base + OFFSET_IN_JUMP + 0x8, 4);
-          // Write<int>(g_Base + OFFSET_IN_DUCK + 0x8, 4);
+          apex_mem.Write<int>(g_Base + offsets.in_jump + 0x8, 4);
+          // Write<int>(g_Base + offsets.offset_in_duck + 0x8, 4);
           last_sg_finish = duration_cast<std::chrono::milliseconds>(
               std::chrono::system_clock::now().time_since_epoch());
           // g_logger += "sg\n";
@@ -412,174 +390,40 @@ void ClientActions() {
         }
       }
 
+      { // Update key state for aimbot
 
-      /*
-      108 Left mouse button (mouse1)
-      109 Right mouse button (mouse2)
-      110 Middle mouse button (mouse3)
-      111 Side mouse button (mouse4)
-      112 Side mouse button (mouse5)
-
-      79 SHIFT key
-      81 ALT key
-      83 CTRL key
-
-      1 KEY_0
-      2 KEY_1
-      3 KEY_2
-      4 KEY_3
-      5 KEY_4
-      6 KEY_5
-      7 KEY_6
-      8 KEY_7
-      9 KEY_8
-      10 KEY_9
-
-      11 KEY_A
-      12 KEY_B
-      13 KEY_C
-      14 KEY_D
-      15 KEY_E
-      16 KEY_F
-      17 KEY_G
-      18 KEY_H
-      19 KEY_I
-      20 KEY_J
-      21 KEY_K
-      22 KEY_L
-      23 KEY_M
-      24 KEY_N
-      25 KEY_O
-      26 KEY_P
-      27 KEY_Q
-      28 KEY_R
-      29 KEY_S
-      30 KEY_T
-      31 KEY_U
-      32 KEY_V
-      33 KEY_W
-      34 KEY_X
-      35 KEY_Y
-      36 KEY_Z
-
-
-      37 KEY_PAD_0
-      38 KEY_PAD_1
-      39 KEY_PAD_2
-      40 KEY_PAD_3
-      41 KEY_PAD_4
-      42 KEY_PAD_5
-      43 KEY_PAD_6
-      44 KEY_PAD_7
-      45 KEY_PAD_8
-      46 KEY_PAD_9
-      47 KEY_PAD_DIVIDE
-      48 KEY_PAD_MULTIPLY
-      49 KEY_PAD_MINUS
-      50 KEY_PAD_PLUS
-      51 KEY_PAD_ENTER
-      52 KEY_PAD_DECIMAL
-
-
-      65 KEY_SPACE
-      67 KEY_TAB
-      68 KEY_CAPSLOCK
-      69 KEY_NUMLOCK
-      70 KEY_ESCAPE
-      71 KEY_SCROLLLOCK
-      72 KEY_INSERT
-      73 KEY_DELETE
-      74 KEY_HOME
-      75 KEY_END
-      76 KEY_PAGEUP
-      77 KEY_PAGEDOWN
-      78 KEY_BREAK
-
-
-      88 KEY_UP
-      89 KEY_LEFT
-      90 KEY_DOWN
-      91 KEY_RIGHT
-
-
-      92 KEY_F1
-      93 KEY_F2
-      94 KEY_F3
-      95 KEY_F4
-      96 KEY_F5
-      97 KEY_F6
-      98 KEY_F7
-      99 KEY_F8
-      100 KEY_F9
-      101 KEY_F10
-      102 KEY_F11
-      103 KEY_F12
-      */
-
-      if (local_held_id == -251) {
-        if ((g_settings.no_nade_aim && zoom_state == 0) ||  //手雷右键瞄准
-            (!g_settings.no_nade_aim && zoom_state > 0)) {  //右键取消手雷自瞄
-          aimbot.gun_safety = true;
+        if (isPressed(g_settings.aimbot_hot_key_1)) {
+          aimbot_update_aim_key_state(g_settings.aimbot_hot_key_1);
+        } else if (isPressed(g_settings.aimbot_hot_key_2)) {
+          aimbot_update_aim_key_state(g_settings.aimbot_hot_key_2);
         } else {
-          aimbot.gun_safety = false;
+          aimbot_update_aim_key_state(0);
+        }
+
+        aimbot_update_attack_state(attack_state);
+        aimbot_update_zoom_state(zoom_state);
+
+        if (isPressed(g_settings.trigger_bot_hot_key)) {
+          aimbot_update_triggerbot_key_state(g_settings.trigger_bot_hot_key);
+        } else {
+          aimbot_update_triggerbot_key_state(0);
         }
       }
+
       int isGrppleActived, isGrppleAttached;
-      apex_mem.Read<int>(local_player_ptr + OFFSET_GRAPPLE_ACTIVE, isGrppleActived);
+      apex_mem.Read<int>(local_player_ptr + offsets.player_grapple_active,
+                         isGrppleActived);
       if (g_settings.super_grpple) {
-          if (isGrppleActived) {
-              apex_mem.Read<int>(local_player_ptr + OFFSET_GRAPPLE + OFFSET_GRAPPLE_ATTACHED, isGrppleAttached);
-              if (isGrppleAttached == 1) {
-                  apex_mem.Write<int>(g_Base + OFFSET_IN_JUMP + 0x08, 5);
-                  std::this_thread::sleep_for(std::chrono::milliseconds(20));
-                  apex_mem.Write<int>(g_Base + OFFSET_IN_JUMP + 0x08, 4);
-              }
+        if (isGrppleActived) {
+          apex_mem.Read<int>(local_player_ptr + offsets.player_grapple +
+                                 offsets.grapple_attached,
+                             isGrppleAttached);
+          if (isGrppleAttached == 1) {
+            apex_mem.Write<int>(g_Base + offsets.in_jump + 0x08, 5);
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            apex_mem.Write<int>(g_Base + offsets.in_jump + 0x08, 4);
           }
-      }
-      if (g_settings.keyboard) {
-        if (isPressed(g_settings.aimbot_hot_key_1) ||
-            isPressed(g_settings.aimbot_hot_key_2)) // Left and Right click(add smooth later)
-        {
-          aimbot.aiming = true;
-        } else {
-          aimbot.aiming = false;
         }
-        if (isPressed(g_settings.aimbot_hot_key_2)) {
-            aimbot.smooth = g_settings.smooth - 30;
-        }
-        else {
-            aimbot.smooth = g_settings.smooth;
-        }
-      }
-      if (g_settings.gamepad) {
-        // attackState == 120 || zoomState == 119
-        if (attack_state > 0 || zoom_state > 0) {
-          aimbot.aiming = true;
-        } else {
-          aimbot.aiming = false;
-        }
-      }
-      bool triggerbot_shotgun;
-      switch (local_weapon_id) {
-      case idweapon_eva8:
-      case idweapon_mastiff:
-      case idweapon_mozambique:
-      case idweapon_peacekeeper:
-          triggerbot_shotgun = true;
-          break;
-      default:
-          triggerbot_shotgun = false;
-      }
-      if (g_settings.shotgun_auto_shot && triggerbot_shotgun && isPressed(109)) {
-          trigger_ready = true;
-      }
-      else {
-          trigger_ready = false;
-      }
-      if (zoom_state > 0) { //根据是否开镜选择不同的自瞄范围
-        aimbot.max_fov = g_settings.ads_fov;
-      } else {
-        aimbot.max_fov = g_settings.non_ads_fov;
       }
 
       // Trigger ring check on F8 key press for over 0.5 seconds
@@ -612,34 +456,32 @@ void ClientActions() {
   cactions_t = false;
 }
 
-void ControlLoop() {//根据观战人数闪烁键盘背光
+void ControlLoop() {
   control_t = true;
   while (control_t) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    std::lock_guard<std::mutex> lock(spectatorsMtx);
-    int spec_count = spectators.size();
-    if (spec_count > 0) {
-      kbd_backlight_blink(spec_count);
+    if (g_spectators > 0) {
+      kbd_backlight_blink(g_spectators);
       std::this_thread::sleep_for(std::chrono::milliseconds(10 * 1000 - 100));
     }
   }
   control_t = false;
 }
 
-//位于ProcessPlayer
 void SetPlayerGlow(Entity &LPlayer, Entity &Target, int index,
                    int frame_number) {
   const auto g_settings = global_settings();
   int setting_index = 0;
   std::array<float, 3> highlight_parameter = {0, 0, 0};
 
-  if (!Target.isGlowing() ||
-      (int)Target.buffer[OFFSET_GLOW_THROUGH_WALLS_GLOW_VISIBLE_TYPE] != 1) {
+  // if (!Target.isGlowing() ||
+  //     (int)Target.buffer[OFFSET_GLOW_VISIBLE_TYPE] != 1)
+  {
     float currentEntityTime = 5000.f;
     if (!isnan(currentEntityTime) && currentEntityTime > 0.f) {
       // set glow color
       if (!(g_settings.firing_range) &&
-          (Target.isKnocked() || !Target.isAlive())) {  //不在训练场并且倒地或者没活着
+          (Target.isKnocked() || !Target.isAlive())) {
         setting_index = 80;
         highlight_parameter = {g_settings.glow_r_knocked,
                                g_settings.glow_g_knocked,
@@ -679,52 +521,57 @@ void SetPlayerGlow(Entity &LPlayer, Entity &Target, int index,
         }
       }
       // love player glow
-      if (g_settings.player_glow_love_user && Target.check_love_player()) {
-          int frame_frag = frame_number / ((int)g_settings.game_fps);
-          if (setting_index == 81 ||
-              frame_frag % 2 == 0) { // vis: always, else: 1s time slice
+      if (g_settings.player_glow_love_user) {
+        int frame_frag = frame_number / ((int)g_settings.game_fps);
+        if (setting_index == 81 ||
+            frame_frag % 2 == 0) { // vis: always, else: 1s time slice
+          auto at = Target.check_love_player();
+          if (at == LOVE) {
             setting_index = 96;
-            rainbowColor(frame_number, highlight_parameter);    //返回一个rgb色彩到highlight_parameter
+            rainbowColor(frame_number, highlight_parameter);
+          } else if (at == HATE) {
+            setting_index = 90;
+            highlight_parameter = {2 / 255.0, 2 / 255.0, 2 / 255.0};
           }
         }
-      // enable glow
-      if (g_settings.player_glow) {     //如果设置里开了发光，就执行发光
-        Target.enableGlow(setting_index, g_settings.player_glow_inside_value,
-            g_settings.player_glow_outline_size, highlight_parameter);
       }
-      if (!g_settings.player_glow) {      //如果设置里关闭了发光，并且玩家仍在发光，就将发光效果取消掉
-        Target.enableGlow(setting_index, 0, 0, highlight_parameter);
+
+      // enable glow
+      if (g_settings.player_glow) {
+        Target.enableGlow(setting_index, g_settings.player_glow_inside_value,
+                          g_settings.player_glow_outline_size,
+                          highlight_parameter);
+      } else {
+        Target.disableGlow();
       }
     }
   }
 }
 
-//位于DoAction
 void ProcessPlayer(Entity &LPlayer, Entity &target, uint64_t entitylist,
-                   int index, int frame_number, std::set<uintptr_t> &tmp_specs) {
+                   int index, int frame_number, std::set<uintptr_t> &tmp_specs,
+                   const settings_t g_settings) {
+  if (!lastvis_aim.contains(index)) {
+    lastvis_aim[index] = 0.0f;
+  }
 
-  const auto g_settings = global_settings();
-
-  int local_team = LPlayer.getTeamId();
   int entity_team = target.getTeamId();
+  int local_team = LPlayer.getTeamId();
+  // printf("Target Team: %i\n", entity_team);
 
-  if (!target.isAlive() || !LPlayer.isAlive()) {
+  if (target.is_player && (!target.isAlive() || !LPlayer.isAlive())) {
     // Update yew to spec checker
-    tick_yew(target.ptr, target.GetYaw());  //什么是yaw？tick_yew还是生成的wasm?
+    tick_yew(target.ptr, target.GetYaw());
     // Exclude self from list when watching others
     if (target.ptr != LPlayer.ptr && is_spec(target.ptr)) {
       tmp_specs.insert(target.ptr);
     }
-    // if (target.ptr != LPlayer.ptr && LPlayer.GetYaw() == target.GetYaw()) {
-    // // check yew
-    //   tmp_specs.insert(target.ptr);
-    // }
     return;
   }
 
-  if (g_settings.tdm_toggle) { // 团队模式按奇偶分队伍
-                               // 若与玩家同队则不进行后续
-    // printf("Target Team: %i\n", entity_team);
+  if (g_settings.tdm_toggle) { // Check if the target entity is on the same
+                               // team as the
+                               // local player
     int EntTeam, LocTeam;
     if (entity_team % 2)
       EntTeam = 1;
@@ -740,65 +587,31 @@ void ProcessPlayer(Entity &LPlayer, Entity &target, uint64_t entitylist,
       return;
   }
 
-  // Firing range stuff
   if (!g_settings.firing_range) {
-    if (entity_team < 0 || entity_team > 50 ||
-        (entity_team == team_player && !g_settings.onevone)) {
-      return;
-    }
-    if (map_testing_local_team != 0 && entity_team == map_testing_local_team) {
+    if ((entity_team == local_team ||
+         (map_testing_local_team != 0 &&
+          entity_team == map_testing_local_team)) &&
+        !g_settings.onevone) {
       return;
     }
   }
+
   if (target.ptr != LPlayer.ptr) {
-  Vector EntityPosition = target.getPosition();
-  Vector LocalPlayerPosition = LPlayer.getPosition();
-  float dist = LocalPlayerPosition.DistTo(EntityPosition);
-  float fov = CalculateFov(LPlayer, target);
-  bool vis = target.lastVisTime() > lastvis_aim[index];
-  // aim distance check
-  if ((local_held_id == -251 && dist > g_settings.skynade_dist) ||
-      dist > g_settings.aim_dist)
-    return;
-  // Targeting
-  float score = calc_target_score(fov, dist, vis);
+    // Targeting
+    Vector target_pos = target.getPosition();
+    Vector local_pos = LPlayer.getPosition();
+    float dist = local_pos.DistTo(target_pos);
+    float fov = CalculateFov(LPlayer, target);
+    bool vis = target.lastVisTime() > lastvis_aim[index];
+    bool love = target.check_love_player();
 
-  if (score < aimbot.target_score_max) {
-    aimbot.target_score_max = score;
-    aimbot.tmp_aimentity = target.ptr;
+    aimbot_add_select_target(fov, dist, vis, love, target.ptr);
+
+    // Player Glow
+    SetPlayerGlow(LPlayer, target, index, frame_number);
   }
 
-  if (aimbot.aimentity == target.ptr) {
-      if (g_settings.aim == 2 && local_held_id != -251) {
-          aimbot.gun_safety = !vis;
-      }
-  }
-  /*if (g_settings.aim == 2) {
-    // vis check for shooting current aim entity
-    if (local_held_id != -251 && aimbot.aimentity == target.ptr) {
-      if (!vis) {
-        // turn on safety
-        aimbot.gun_safety = true;
-      } else {
-        aimbot.gun_safety = false;
-      }
-    }
-    */
-    // TriggerBot
-    if (aimbot.aimentity != 0) {
-      uint64_t LocalPlayer = 0;
-      apex_mem.Read<uint64_t>(g_Base + OFFSET_LOCAL_ENT, LocalPlayer);
-
-      Entity Target = getEntity(aimbot.aimentity);
-      // Entity LPlayer = getEntity(LocalPlayer);
-
-
-      if (trigger_ready && IsInCrossHair(Target)) {
-        TriggerBotRun();
-      }
-    }
-  SetPlayerGlow(LPlayer, target, index, frame_number);
-  }
+  // For vis check
   lastvis_aim[index] = target.lastVisTime();
 }
 
@@ -807,177 +620,161 @@ void DoActions() {
   actions_t = true;
   while (actions_t) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    while (g_Base != 0) {   //读到游戏基址后开始循环
-      std::this_thread::sleep_for(std::chrono::milliseconds(30)); // don't change xD
+    while (g_Base != 0) {
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(30)); // don't change xD
 
       uint64_t LocalPlayer = 0;
-      apex_mem.Read<uint64_t>(g_Base + OFFSET_LOCAL_ENT, LocalPlayer);  //读取本地玩家的所在地址,即是当前视角的玩家，自己或者你死亡后观战的人
+      apex_mem.Read<uint64_t>(g_Base + offsets.local_ent, LocalPlayer);
       if (LocalPlayer == 0)
-          continue;
-      const auto g_settings = global_settings();
+        continue;
+
       char level_name[200] = {0};
-      uint64_t LevelName_ptr;
-      apex_mem.Read<uint64_t>(g_Base + OFFSET_LEVELNAME, LevelName_ptr);   //根据偏移读取当前地图名
-      apex_mem.ReadArray<char>(LevelName_ptr, level_name, 200);
+      apex_mem.ReadArray<char>(g_Base + offsets.levelname, level_name, 200);
       // printf("%s\n", level_name);
-      if (strcmp(level_name, "mp_lobby") == 0) {
+      if (strcmp(level_name, xorstr_("mp_lobby")) == 0) {
         map = 0;
-      }else if (strcmp(level_name, "mp_rr_canyonlands_staging_mu1") == 0) {
+      } else if (strcmp(level_name, xorstr_("mp_rr_canyonlands_staging_mu1")) ==
+                 0) {
         map = 1;
-      } else if (strcmp(level_name, "mp_rr_tropic_island_mu1_storm") == 0) {
+      } else if (strcmp(level_name, xorstr_("mp_rr_tropic_island_mu1_storm")) ==
+                 0) {
         map = 2;
-      } else if (strcmp(level_name, "mp_rr_desertlands_hu") == 0) {
+      } else if (strcmp(level_name, xorstr_("mp_rr_desertlands_hu")) == 0) {
         map = 3;
-      } else if (strcmp(level_name, "mp_rr_olympus") == 0) {
+      } else if (strcmp(level_name, xorstr_("mp_rr_olympus")) == 0) {
         map = 4;
-      } else if (strcmp(level_name, "mp_rr_divided_moon") == 0) {
+      } else if (strcmp(level_name, xorstr_("mp_rr_divided_moon")) == 0) {
         map = 5;
       } else {
         map = -1;
+        map = -1;
       }
 
-      if (g_settings.firing_range) {    //判断是否在射击场,从而区分应该循环的次数
-        playerentcount = 16000;
-      } else {
-        playerentcount = 61;
+      {
+        int pad = 0;
+        apex_mem.Read<int>(LocalPlayer + offsets.player_controller_active, pad);
+        bool controller_active = pad == 1;
+        bool firing_range_mode = map == 1;
+
+        bool update = true;
+        auto settings = global_settings();
+        if (settings.aimbot_settings.gamepad != controller_active) {
+          settings.aimbot_settings.gamepad = controller_active;
+        } else if (settings.firing_range != firing_range_mode) {
+          settings.firing_range = firing_range_mode;
+        } else {
+          update = false;
+        }
+
+        if (update) {
+          update_settings(settings);
+          tui_menu_forceupdate();
+        }
       }
-      if (g_settings.deathbox) {    //如果开了死亡之箱高亮则需要更多物品循环
+
+      const auto g_settings = global_settings();
+
+      if (g_settings.deathbox) {
         itementcount = 15000;
       } else {
         itementcount = 10000;
       }
 
-      Entity LPlayer = getEntity(LocalPlayer);  //根据地址生成玩家实体对象entity
-
-      team_player = LPlayer.getTeamId();    //获取自己所在队伍的id
-      if (team_player < 0 || team_player > 50) {    //id不对开始新的while循环不继续执行
-        continue;   
-      }
-      uint64_t entitylist = g_Base + OFFSET_ENTITYLIST;
+      Entity LPlayer = getEntity(LocalPlayer);
+      const int team_player = LPlayer.getTeamId();
+      uint64_t entitylist = g_Base + offsets.entitylist;
 
       uint64_t baseent = 0;
-      apex_mem.Read<uint64_t>(entitylist, baseent); //Check base entity is not Null
-      if (baseent == 0) {
+      apex_mem.Read<uint64_t>(entitylist, baseent);
+
+      if (team_player < 0 || team_player > 50 || baseent == 0) {
+        g_spectators = g_allied_spectators = 0;
+
         continue;
       }
 
-      {
-        static uintptr_t lplayer_ptr = 0;
-        if (lplayer_ptr != LPlayer.ptr) {   //如果LPlayer.ptr不为0，即前面读取都是顺利的，则将本地玩家指针传给lplayer_ptr
-          lplayer_ptr = LPlayer.ptr;
-          init_spec_checker(lplayer_ptr);   //函数定义在rust里，\apex_dma\apexsky\src\lib.rs  \apex_dma\apexsky\src\skyapex\spectators.rs
+      { // Init spectator checker
+        static uintptr_t prev_lplayer_ptr = 0;
+        if (prev_lplayer_ptr != LocalPlayer) {
+          prev_lplayer_ptr = LocalPlayer;
+          init_spec_checker(LocalPlayer);
         }
-        tick_yew(lplayer_ptr, LPlayer.GetYaw());
+        // Update local entity yew
+        tick_yew(LocalPlayer, LPlayer.GetYaw());
       }
 
       int frame_number = 0;
-      apex_mem.Read<int>(g_Base + OFFSET_GLOBAL_VARS + 0x0008, frame_number);       //读取游戏的实际帧率
+      apex_mem.Read<int>(g_Base + offsets.global_vars + 0x0008, frame_number);
+
       std::set<uintptr_t> tmp_specs;
-      aimbot.target_score_max = calc_target_score(50.0f, g_settings.aim_dist, false);
-      aimbot.tmp_aimentity = 0;
-      centity_to_index.clear();
-      //tmp_specs.clear();
-      if (g_settings.firing_range) {
-        int c = 0;
-        for (int i = 0; i < playerentcount; i++) {
-          uint64_t centity = 0;
-          apex_mem.Read<uint64_t>(entitylist + ((uint64_t)i << 5), centity);
-          if (centity == 0)
-            continue;
-          centity_to_index.insert_or_assign(centity, i);
-          if (LocalPlayer == centity) {
+
+      aimbot_start_select_target();
+
+      for (int i = 0; i < ENT_NUM; i++) {
+        uint64_t centity = 0;
+        apex_mem.Read<uint64_t>(entitylist + ((uint64_t)i << 5), centity);
+        if (centity == 0) {
+          continue;
+        }
+        // Exclude undesired entity
+        bool is_player = Entity::isPlayer(centity);
+        if (g_settings.firing_range) {
+          if (!(Entity::isDummy(centity) ||
+                (g_settings.onevone && is_player))) {
             continue;
           }
-
-          Entity Target = getEntity(centity);
-          if (!(Target.isDummy() || (g_settings.onevone && Target.isPlayer()))) {
-            continue;
-          }//目标是假人或者（1v1 and 目标是玩家）则执行ProcessPlayer
-
-          ProcessPlayer(LPlayer, Target, entitylist, c, frame_number, tmp_specs);
-          c++;
-        }
-      } else {
-
-        for (int i = 0; i < toRead; i++) {
-          uint64_t centity = 0;
-          apex_mem.Read<uint64_t>(entitylist + ((uint64_t)i << 5), centity);
-          if (centity == 0)
-            continue;
-          centity_to_index.insert_or_assign(centity, i);
-
-          if (LocalPlayer == centity)
-            continue;
-          Entity Target = getEntity(centity);
-          if (!Target.isPlayer()) {
+        } else {
+          if (!is_player) {
             continue;
           }
-
-          ProcessPlayer(LPlayer, Target, entitylist, i, frame_number, tmp_specs);
         }
+        if (LocalPlayer == centity) {
+          continue;
+        }
+        Entity Target = getEntity(centity);
+        ProcessPlayer(LPlayer, Target, entitylist, i, frame_number, tmp_specs,
+                      g_settings);
       }
+
+      aimbot_finish_select_target();
 
       { // refresh spectators count
-          std::vector<Entity> tmp_spec, tmp_all_spec;
-          std::lock_guard<std::mutex> lock(spectatorsMtx);
-          for (auto it = tmp_specs.begin(); it != tmp_specs.end(); it++) {
-              Entity target = getEntity(*it);
-              if (target.getTeamId() == team_player) { //将队友添加到tmp_all_spec容器的末尾
-                  tmp_all_spec.push_back(target);
-              }
-              else {
-                  tmp_spec.push_back(target); //不是队友就添加到tmp_spec
-              }
+        std::vector<Entity> tmp_spec, tmp_all_spec;
+        for (auto it = tmp_specs.begin(); it != tmp_specs.end(); it++) {
+          Entity target = getEntity(*it);
+          if (target.getTeamId() == team_player) {
+            tmp_all_spec.push_back(target);
+          } else {
+            tmp_spec.push_back(target);
           }
-          //spectators.clear();
-          //allied_spectators.clear();
-          spectators = tmp_spec;
-          allied_spectators = tmp_all_spec;
+        }
+        g_spectators = tmp_spec.size();
+        g_allied_spectators = tmp_all_spec.size();
       }
-      // set current aim entity
-      if (aimbot.lock) { // locked target
-        aimbot.aimentity = aimbot.locked_aimentity;
-      } else { // or new target
-        aimbot.aimentity = aimbot.tmp_aimentity;
-      }
-      // disable aimbot safety if vis check is turned off
-      if (g_settings.aim == 1 && local_held_id != -251) {
-        aimbot.gun_safety = false;
-      }
-      
+
       // weapon model glow
       // printf("%d\n", LPlayer.getHealth());
       if (g_settings.weapon_model_glow && LPlayer.getHealth() > 0) {
         std::array<float, 3> highlight_color;
-        bool weapon_glow = false;
-        int spectators_num = spectators.size();
-        if (spectators_num > 6) {
-            rainbowColor(frame_number, highlight_color);    //大于6人观战彩色
-            weapon_glow = true;
-        }
-        else if (spectators_num > 4) {
-            highlight_color = { 1, 0, 0 }; //大于4人红色
-            weapon_glow = true;
-        }
-        else if (spectators_num > 2) {
-            highlight_color = { 1, 0.6, 0 };   //3-4人橙色
-            weapon_glow = true;
-        }
-        else if (spectators_num > 0) {
-            highlight_color = { 0, 0.4, 1 };  //1-2人蓝色
-            weapon_glow = true;
-        }
-        else if (allied_spectators.size() > 0) {    //没有敌人但是队友观战绿色
+        if (g_spectators > 0) {
+          highlight_color = {1, 0, 0};
+          LPlayer.glow_weapon_model(true, false, highlight_color);
+        } else if (g_allied_spectators > 0) {
           highlight_color = {0, 1, 0};
-          weapon_glow = true;
-        } 
-        else {
-            weapon_glow = false;            //没人观战不发光
+          LPlayer.glow_weapon_model(true, false, highlight_color);
+        } else {
+          rainbowColor(frame_number, highlight_color);
+          LPlayer.glow_weapon_model(true, true, highlight_color);
         }
-        LPlayer.glow_weapon_model(g_Base, weapon_glow, highlight_color);
+        // printf("R: %f, G: %f, B: %f\n", highlight_color[0],
+        // highlight_color[1], highlight_color[2]);
+
+        // LPlayer.enableGlow(5, 199, 14, 32, highlight_color);
       } else {
-        LPlayer.glow_weapon_model(g_Base, false, {0, 0, 0});
+        LPlayer.glow_weapon_model(false, true, {0, 0, 0});
       }
     }
   }
@@ -986,275 +783,350 @@ void DoActions() {
 
 // /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::vector<player> players(toRead);
-Matrix view_matrix_data = {};
+std::vector<player> players(100);
+Matrix g_view_matrix = {};
 
 // ESP loop.. this helps right?
 static void EspLoop() {
   esp_t = true;
   while (esp_t) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    // Update ESP data
     while (g_Base != 0 && overlay_t) {
       std::this_thread::sleep_for(std::chrono::milliseconds(2));
+
       const auto g_settings = global_settings();
 
-      if (g_settings.esp) {
-        valid = false;
-
-        uint64_t LocalPlayer = 0;
-        apex_mem.Read<uint64_t>(g_Base + OFFSET_LOCAL_ENT, LocalPlayer);
-        if (LocalPlayer == 0) {
-          next2 = true;
-          while (next2 && g_Base != 0 && overlay_t && g_settings.esp) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-          }
-          continue;
-        }
-        Entity LPlayer = getEntity(LocalPlayer);
-        int team_player = LPlayer.getTeamId();
-        if (team_player < 0 || team_player > 50) {
-          next2 = true;
-          while (next2 && g_Base != 0 && overlay_t && g_settings.esp) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-          }
-          continue;
-        }
-        Vector LocalPlayerPosition = LPlayer.getPosition();
-        esp_local_pos = LocalPlayerPosition;
-
-        uint64_t viewRenderer = 0;
-        apex_mem.Read<uint64_t>(g_Base + OFFSET_RENDER, viewRenderer);  // displays ESp, heath dist names etc
-        uint64_t viewMatrix = 0;
-        apex_mem.Read<uint64_t>(viewRenderer + OFFSET_MATRIX, viewMatrix);
-
-        apex_mem.Read<Matrix>(viewMatrix, view_matrix_data);
-
-        uint64_t entitylist = g_Base + OFFSET_ENTITYLIST;
-
-        players.clear();
-
-        {
-          Vector LocalPlayerPosition = LPlayer.getPosition();
-          QAngle localviewangle = LPlayer.GetViewAngles();
-
-          // Ammount of ents to loop, dont edit.
-          for (int i = 0; i < toRead; i++) {
-            // Read entity pointer
-            uint64_t centity = 0;
-            apex_mem.Read<uint64_t>(entitylist + ((uint64_t)i << 5), centity);
-            if (centity == 0) {
-              continue;
-            }
-
-            // Exclude self
-            if (LocalPlayer == centity) {
-              continue;
-            }
-
-            // Get entity data
-            Entity Target = getEntity(centity);
-
-            // Exclude undesired entity
-            if (g_settings.firing_range) {
-              if (!Target.isDummy() && !g_settings.onevone) {
-                continue;
-              }
-            } else {
-              if (!Target.isPlayer()) {
-                continue;
-              }
-            }
-
-            int entity_team = Target.getTeamId();
-
-            // Exclude invalid team
-            if (entity_team < 0 || entity_team > 50) {
-              continue;
-            }
-
-            // Exlude teammates if not 1v1
-            if (entity_team == team_player && !g_settings.onevone) {
-              continue;
-            }
-            // if (map_testing_local_team != 0 &&
-            //     entity_team == map_testing_local_team) {
-            //   continue;
-            // }
-
-            Vector EntityPosition = Target.getPosition();
-            float dist = LocalPlayerPosition.DistTo(EntityPosition);
-
-            // Excluding targets that are too far or too close
-            if (dist > g_settings.max_dist || dist < 20.0f) {
-              continue;
-            }
-
-            Vector bs = Vector();
-            // Change res to your res here, default is 1080p but can copy paste
-            // 1440p here
-            WorldToScreen(EntityPosition, view_matrix_data.matrix,
-                          g_settings.screen_width, g_settings.screen_height,
-                          bs); // 2560, 1440
-            if (g_settings.esp) {
-              Vector hs = Vector();
-              Vector HeadPosition = Target.getBonePositionByHitbox(0);
-              // Change res to your res here, default is 1080p but can copy
-              // paste 1440p here
-              WorldToScreen(HeadPosition, view_matrix_data.matrix,
-                            g_settings.screen_width, g_settings.screen_height,
-                            hs); // 2560, 1440
-              float height = abs(abs(hs.y) - abs(bs.y));
-              float width = height / 2.0f;
-              float boxMiddle = bs.x - (width / 2.0f);
-              int health = Target.getHealth();
-              int shield = Target.getShield();
-              int maxshield = Target.getMaxshield();
-              int armortype = Target.getArmortype();
-              Vector EntityPosition = Target.getPosition();
-              float targetyaw = Target.GetYaw();
-              uint64_t entity_index = i - 1;
-              player data_buf = {dist,
-                                 entity_team,
-                                 boxMiddle,
-                                 hs.y,
-                                 width,
-                                 height,
-                                 bs.x,
-                                 bs.y,
-                                 Target.isKnocked(),
-                                 (Target.lastVisTime() > lastvis_esp[i]),
-                                 health,
-                                 shield,
-                                 maxshield,
-                                 armortype,
-                                 EntityPosition,
-                                 LocalPlayerPosition,
-                                 localviewangle,
-                                 targetyaw,
-                                 Target.isAlive(),
-                                 Target.check_love_player(),
-                                 false};
-              Target.get_name(data_buf.name);
-              std::lock_guard<std::mutex> lock(spectatorsMtx);
-              for (auto &ent : spectators) {
-                if (ent.ptr == centity) {
-                  data_buf.is_spectator = true;
-                  break;
-                }
-              }
-              players.push_back(data_buf);
-              lastvis_esp[i] = Target.lastVisTime();
-              valid = true;
-            }
-          }
-        }
-
-        next2 = true;
-        while (next2 && g_Base != 0 && overlay_t && g_settings.esp) {
-          std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
+      if (!g_settings.esp) {
+        break;
       }
+
+      // LOCK mutex
+      std::lock_guard<std::mutex> esp_lock(esp_mtx);
+      // esp_mtx.lock();
+      //  Clear players data
+      players.clear();
+
+      // Read local entity and team
+      uint64_t local_ent_ptr = 0;
+      apex_mem.Read<uint64_t>(g_Base + offsets.local_ent, local_ent_ptr);
+      if (local_ent_ptr == 0) {
+        // esp_mtx.unlock();
+        break;
+      }
+      Entity local_player = getEntity(local_ent_ptr);
+      int team_player = local_player.getTeamId();
+      if (team_player < 0 || team_player > 50) {
+        // esp_mtx.unlock();
+        break;
+      }
+
+      // Read matrix for ESP
+      uint64_t viewRenderer = 0;
+      apex_mem.Read<uint64_t>(g_Base + offsets.view_render, viewRenderer);
+      uint64_t viewMatrix = 0;
+      apex_mem.Read<uint64_t>(viewRenderer + offsets.view_matrix, viewMatrix);
+
+      apex_mem.Read<Matrix>(viewMatrix, g_view_matrix);
+
+      Vector local_ent_pos = local_player.getPosition();
+      QAngle local_viewangle = local_player.GetViewAngles();
+
+      // Update local_ent position for ESP
+      g_esp_local_pos = local_ent_pos;
+
+      // Read variable for damage display
+      int var_damage;
+      apex_mem.Read<int>(g_Base + offsets.var_damage, var_damage);
+
+      // Read players
+      uint64_t entitylist = g_Base + offsets.entitylist;
+      for (int i = 0; i < 100; i++) {
+        // Read entity pointer
+        uint64_t centity = 0;
+        apex_mem.Read<uint64_t>(entitylist + ((uint64_t)i << 5), centity);
+        if (centity == 0) {
+          continue;
+        }
+
+        // Exclude undesired entity
+        bool is_player = Entity::isPlayer(centity);
+        if (g_settings.firing_range) {
+          if (!(Entity::isDummy(centity) ||
+                (g_settings.onevone && is_player))) {
+            continue;
+          }
+        } else {
+          if (!is_player) {
+            continue;
+          }
+        }
+
+        // Exclude self
+        if (local_ent_ptr == centity) {
+          continue;
+        }
+
+        // Get entity data
+        Entity Target = getEntity(centity);
+
+        int entity_team = Target.getTeamId();
+
+        // Exclude invalid team
+        if (entity_team < 0 || entity_team > 50) {
+          continue;
+        }
+
+        Vector EntityPosition = Target.getPosition();
+        float dist = local_ent_pos.DistTo(EntityPosition);
+
+        // Excluding targets that are too far or too close
+        if (dist > g_settings.max_dist || dist < 20.0f) {
+          continue;
+        }
+
+        Vector bs = Vector();
+        // Change res to your res here, default is 1080p but can copy paste
+        // 1440p here
+        WorldToScreen(EntityPosition, g_view_matrix.matrix,
+                      g_settings.screen_width, g_settings.screen_height,
+                      bs); // 2560, 1440
+        if (g_settings.esp) {
+          Vector hs = Vector();
+          Vector HeadPosition = Target.getBonePositionByHitbox(0);
+          WorldToScreen(HeadPosition, g_view_matrix.matrix,
+                        g_settings.screen_width, g_settings.screen_height,
+                        hs); // 2560, 1440
+          float height = abs(abs(hs.y) - abs(bs.y));
+          float width = height / 2.0f;
+          float boxMiddle = bs.x - (width / 2.0f);
+          int health = Target.getHealth();
+          int shield = Target.getShield();
+          int maxshield = Target.getMaxshield();
+          int armortype = Target.getArmortype();
+          Vector EntityPosition = Target.getPosition();
+          float targetyaw = Target.GetYaw();
+          if (!lastvis_esp.contains(i)) {
+            lastvis_esp[i] = 0.0f;
+          }
+
+          player data_buf = {dist,
+                             entity_team,
+                             entity_team == team_player,
+                             boxMiddle,
+                             hs.y,
+                             width,
+                             height,
+                             bs.x,
+                             bs.y,
+                             Target.isKnocked(),
+                             (Target.lastVisTime() > lastvis_esp[i]),
+                             health,
+                             shield,
+                             maxshield,
+                             Target.xp_level(),
+                             -99,
+                             armortype,
+                             EntityPosition,
+                             local_ent_pos,
+                             local_viewangle,
+                             targetyaw,
+                             Target.isAlive(),
+                             Target.check_love_player(),
+                             is_spec(Target.ptr)};
+
+          int var_ent_i = 0;
+          apex_mem.Read<int>(Target.ptr + offsets.player_net_var, var_ent_i);
+          uintptr_t var_ptr;
+          apex_mem.Read<uintptr_t>(entitylist + (var_ent_i & 0xffff) * 32,
+                                   var_ptr);
+          apex_mem.Read<int>(var_ptr + (var_damage << 2) + 2936,
+                             data_buf.damage);
+
+          Target.get_name(data_buf.name);
+
+          players.push_back(data_buf);
+          lastvis_esp[i] = Target.lastVisTime();
+        }
+      } // for loop end
+      // esp_mtx.unlock();
     }
   }
   esp_t = false;
 }
 
 // Aimbot Loop stuff
-inline static void lock_target(uintptr_t target_ptr) {  //锁定目标函数，aimbot是包含自瞄信息的结构体
-  aimbot.lock = true;
-  aimbot.locked_aimentity = target_ptr;
-}
-inline static void cancel_targeting() { //取消锁定
-  aimbot.lock = false;
-  aimbot.locked_aimentity = 0;
-}
 static void AimbotLoop() {
   aim_t = true;
   while (aim_t) {
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
     while (g_Base != 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      std::this_thread::sleep_for(std::chrono::milliseconds(15));
+
+      static std::chrono::milliseconds last_time =
+          duration_cast<std::chrono::milliseconds>(
+              std::chrono::system_clock::now().time_since_epoch());
+      std::chrono::milliseconds now_ms =
+          duration_cast<std::chrono::milliseconds>(
+              std::chrono::system_clock::now().time_since_epoch());
+      float smooth_factor = (now_ms - last_time).count() / 1.054571726;
+      // printf("smooth_factor=%f\n", smooth_factor);
+      last_time = now_ms;
+
       const auto g_settings = global_settings();
 
       // Read LocalPlayer
       uint64_t LocalPlayer = 0;
-      apex_mem.Read<uint64_t>(g_Base + OFFSET_LOCAL_ENT, LocalPlayer);
+      apex_mem.Read<uint64_t>(g_Base + offsets.local_ent, LocalPlayer);
       if (LocalPlayer == 0) {
-          continue;
+        continue;
       }
       Entity LPlayer = getEntity(LocalPlayer);
-      if (LPlayer.isKnocked()) {
-          cancel_targeting();
-          continue;
+
+      { // Read held id
+        int held_id;
+        apex_mem.Read<int>(LocalPlayer + offsets.off_weapon,
+                           held_id); // 0x1a1c
+        aimbot_update_held_id(held_id);
       }
-      // Read HeldID
-      int HeldID;
-      apex_mem.Read<int>(LocalPlayer + OFFSET_OFF_WEAPON, HeldID); // 0x1a1c
-      local_held_id = HeldID;   //读取本地玩家手持物品id赋值给local_held_id
-      
-      // Read WeaponID
-      ulong ehWeaponHandle;
-      apex_mem.Read<uint64_t>(LocalPlayer + OFFSET_ACTIVE_WEAPON,ehWeaponHandle);
-      ehWeaponHandle &= 0xFFFF;                // eHandle
-      ulong pWeapon;
-      uint64_t entitylist = g_Base + OFFSET_ENTITYLIST;
-      apex_mem.Read<uint64_t>(entitylist + (ehWeaponHandle * 0x20), pWeapon);
-      uint32_t weaponID;
-      apex_mem.Read<uint32_t>(pWeapon + OFFSET_WEAPON_NAME,weaponID); // 0x1738
-      local_weapon_id = weaponID;
-      // printf("%d\n", weaponID);
-      
-      if (g_settings.aim > 0) {     //0为不自喵，1为不检查可见性，2为检查目标可见性
-        if (aimbot.aimentity == 0) {    //如果无目标取消锁定
-          cancel_targeting();
-          continue;
+
+      { // Read weapon info
+        WeaponXEntity current_weapon = WeaponXEntity();
+        current_weapon.update(LocalPlayer);
+        uint32_t weap_id = current_weapon.get_weap_id();
+        float bullet_speed = current_weapon.get_projectile_speed();
+        float bullet_grav = current_weapon.get_projectile_gravity();
+        float zoom_fov = current_weapon.get_zoom_fov();
+        int weapon_mod_bitfield = current_weapon.get_mod_bitfield();
+        aimbot_update_weapon_info(weap_id, bullet_speed, bullet_grav, zoom_fov,
+                                  weapon_mod_bitfield);
+      }
+
+      { // Update aimbot settings
+        static int i = 0;
+        if (i == 0) {
+          aimbot_settings(&g_settings.aimbot_settings);
         }
-
-        Entity target = getEntity(aimbot.aimentity);
-        // show target indicator before aiming
-        aim_target = target.getPosition();  //获取目标的位置
-
-        if (!aimbot.aiming) {   //aimbot的元素值由DoAction和ClientAction函数修改
-          cancel_targeting();
-          continue;
-        }
-
-        lock_target(aimbot.aimentity);
-        if (aimbot.gun_safety) {    //gun_safety用于可见性检查
-          continue;
-        }
-
-        /* Fine-tuning for each weapon */
-        // bow
-        if (weaponID == 2) {
-          // Ctx.BulletSpeed = BulletSpeed - (BulletSpeed*0.08);
-          // Ctx.BulletGravity = BulletGrav + (BulletGrav*0.05);
-          bulletspeed = 10.08;
-          bulletgrav = 10.05;
-        }
-
-        if (HeldID == -251) { // auto throw
-          QAngle Angles_g = CalculateBestBoneAim(LPlayer, target, 999.9f, aimbot.smooth);
-          if (Angles_g.x == 0 && Angles_g.y == 0) {
-            cancel_targeting();
-            continue;
-          }
-          LPlayer.SetViewAngles(Angles_g);
+        if (i > 30) { // Lower update frequency to reduce cpu usage
+          i = 0;
         } else {
-          QAngle Angles = CalculateBestBoneAim(LPlayer, target, aimbot.max_fov, aimbot.smooth);
-          if (Angles.x == 0 && Angles.y == 0) {
-            cancel_targeting();
-            continue;
-          }
-          LPlayer.SetViewAngles(Angles);
+          i++;
         }
       }
-    }
-  }
+
+      const auto aimbot_settings = aimbot_get_settings();
+      const auto aim_entity = aimbot_get_aim_entity();
+      const auto weapon_id = aimbot_get_weapon_id();
+      const bool aiming = aimbot_is_aiming();
+      const bool trigger_bot_ready = aimbot_is_triggerbot_ready();
+
+      {
+        int trigger_value = aimbot_poll_trigger_action();
+        if (trigger_value) {
+          apex_mem.Write<int>(g_Base + offsets.in_attack + 0x8, trigger_value);
+        }
+      }
+
+      // Update Aimbot state
+      aimbot_update(LocalPlayer, g_settings.game_fps);
+
+      aim_angles_t aim_result;
+
+      if (aim_entity == 0) {
+        aim_result = aim_angles_t{false};
+        aimbot_cancel_locking();
+      } else {
+        Entity target = getEntity(aim_entity);
+
+        // show target indicator before aiming
+        aim_target = target.getPosition();
+
+        if (!(aiming || trigger_bot_ready)) {
+          aim_result = aim_angles_t{false};
+        } else if (aimbot_get_gun_safety()) {
+          // printf("safety on\n");
+          aim_result = aim_angles_t{false};
+        } else if (LPlayer.isKnocked() || !target.isAlive() ||
+                   (!g_settings.firing_range && target.isKnocked())) {
+          aim_result = aim_angles_t{false};
+          aimbot_cancel_locking();
+        } else {
+          // Caculate Aim Angles
+
+          /* Fine-tuning for each weapon */
+          if (weapon_id == 2) { // bow
+            // Ctx.BulletSpeed = BulletSpeed - (BulletSpeed*0.08);
+            // Ctx.BulletGravity = BulletGrav + (BulletGrav*0.05);
+            bulletspeed = 10.08;
+            bulletgrav = 10.05;
+          }
+
+          aim_result =
+              CalculateBestBoneAim(LPlayer, target, aimbot_get_state());
+          if (!aim_result.valid) {
+            aimbot_cancel_locking();
+          }
+        }
+      }
+
+      // Update Trigger Bot state
+      int force_attack_state;
+      apex_mem.Read(g_Base + offsets.in_attack + 0x8, force_attack_state);
+      // Ensure that the triggerbot is updated,
+      // otherwise there may be issues with not canceling after firing.
+      aimbot_triggerbot_update(&aim_result, force_attack_state);
+
+      // Aim Assist
+      QAngle aim_angles;
+      if (aiming && aim_result.valid) {
+        auto smoothed_angles =
+            aimbot_smooth_aim_angles(&aim_result, smooth_factor);
+        aim_angles =
+            QAngle(smoothed_angles.x, smoothed_angles.y, smoothed_angles.z);
+      } else {
+        aim_angles = LPlayer.GetViewAngles();
+        if (abs(aim_angles.x) > 360.0f || abs(aim_angles.y) > 360.0f ||
+            abs(aim_angles.z) > 1.0f) {
+          // printf("%f, %f, %f\n", aim_angles.x, aim_angles.y, aim_angles.z);
+          continue;
+        }
+      }
+
+      // Reduce recoil
+      static QAngle prev_recoil_angle = QAngle(0, 0, 0);
+      if (aimbot_settings.no_recoil) {
+        // get recoil angle
+        QAngle recoil_angles = LPlayer.GetRecoil();
+        // printf("prev=%f, recoil=%f\n", prev_recoil_angle.x, recoil_angles.x);
+
+        if (recoil_angles.x < 0.0f) {
+          QAngle delta_angle(0, 0, 0);
+          // removing recoil angles from player view angles
+          delta_angle.x = ((prev_recoil_angle.x - recoil_angles.x) *
+                           (aimbot_settings.recoil_smooth_x / 100.f));
+          delta_angle.y = ((prev_recoil_angle.y - recoil_angles.y) *
+                           (aimbot_settings.recoil_smooth_y / 100.f));
+
+          // setting viewangles to new angles
+          aim_angles += delta_angle;
+        }
+
+        // setting old recoil angles to current recoil angles
+        prev_recoil_angle = recoil_angles;
+      } else {
+        prev_recoil_angle = QAngle(0, 0, 0);
+      }
+
+      Math::NormalizeAngles(aim_angles);
+      LPlayer.SetViewAngles(aim_angles);
+
+    } // end loop
+  }   // end AimbotLoop
   aim_t = false;
 }
-// Item Glow Stuff
 
+// Item Glow Stuff
 static void item_glow_t() {
   item_t = true;
   while (item_t) {
@@ -1266,32 +1138,32 @@ static void item_glow_t() {
         break;
       }
 
-      uint64_t entitylist = g_Base + OFFSET_ENTITYLIST;
+      uint64_t entitylist = g_Base + offsets.entitylist;
       // item ENTs to loop, 10k-15k is normal. 10k might be better but will
       // not show all the death boxes i think.
 
       // for wish list
-      std::vector<TreasureClue> new_treasure_clues;//定义了一个容器，用于存储 TreasureClue 结构体的实例（就是各种物品），TreasureClue包含itemid\position\distance三个元素，
+      std::vector<TreasureClue> new_treasure_clues;
       for (size_t i = 0; i < wish_list.size(); i++) {
         TreasureClue clue;
         clue.item_id = wish_list[i];
         clue.position = Vector(0, 0, 0);
-        clue.distance = g_settings.aim_dist * 2;
+        clue.distance = g_settings.aimbot_settings.aim_dist * 2;
         new_treasure_clues.push_back(clue);
-      }//初始化wishlist中的物品
+      }
 
-      for (int i = 0; i < itementcount; i++) {//开启10000个物品循环
+      for (int i = 0; i < itementcount; i++) {
         uint64_t centity = 0;
-        apex_mem.Read<uint64_t>(entitylist + ((uint64_t)i << 5), centity);//每个实体是32位数据,所以每次+32，读取结果保存到centity
+        apex_mem.Read<uint64_t>(entitylist + ((uint64_t)i << 5), centity);
         if (centity == 0)
           continue;
-        Item item = getItem(centity);//读取到的是这个实体的数组地址，使用getitem获取到这个数组，此时item包含了ptr（数组指针）和buffer（包含实体所有数据）两个属性，其它还未读取
+        Item item = getItem(centity);
 
         // Item filter glow name setup and search.
         char glowName[200] = {0};
         uint64_t name_ptr;
-        apex_mem.Read<uint64_t>(centity + OFFSET_MODELNAME, name_ptr);//这个实体的数组指针再加上名称偏移量，得到实体名称数组的地址
-        apex_mem.ReadArray<char>(name_ptr, glowName, 200);//将实体名称存到glowName
+        apex_mem.Read<uint64_t>(centity + offsets.centity_modelname, name_ptr);
+        apex_mem.ReadArray<char>(name_ptr, glowName, 200);
 
         // item ids?
         uint64_t ItemID;
@@ -1300,13 +1172,6 @@ static void item_glow_t() {
         ItemID2 = ItemID % 301;
         printf("%ld\n", ItemID2); */
         // printf("Model Name: %s, Item ID: %lu\n", glowName, ItemID);
-        // Level name printf
-        // char LevelNAME[200] = { 0 };
-        // uint64_t levelname_ptr;
-        // apex_mem.Read<uint64_t>(g_Base + OFFSET_LEVELNAME, levelname_ptr);
-        // apex_mem.ReadArray<char>(levelname_ptr, LevelNAME, 200);
-
-        // printf("%s\n", LevelNAME);
 
         // Prints stuff you want to console
         // if (strstr(glowName, "mdl/"))
@@ -1315,619 +1180,388 @@ static void item_glow_t() {
         // }
         // Search model name and if true sets glow, must be a better way to do
         // this.. if only i got the item id to work..
-        /*单显卡用不到暂时注释掉或者可以额外加个判断esp是否为true
+
         for (size_t i = 0; i < new_treasure_clues.size(); i++) {
-          TreasureClue &clue = new_treasure_clues[i];   //将new_treasure_clues[i]赋值给clue，后续可以使用clue指代new_treasure_clues[i]（或许是这样）
-          if (ItemID == new_treasure_clues[i].item_id) {    //如果循环到的实体的ItemID在10个之中（wish为自定义的愿望清单，用于esp显示）
-            Vector position = item.getPosition();    //获取这个实体的坐标
-            float distance = esp_local_pos.DistTo(position);
-            if (distance < clue.distance) { //如果实体距离小于自瞄距离的2倍，将坐标和距离更新到clue中
+          TreasureClue &clue = new_treasure_clues[i];
+          if (ItemID == new_treasure_clues[i].item_id) {
+            Vector position = item.getPosition();
+            float distance = g_esp_local_pos.DistTo(position);
+            if (distance < clue.distance) {
               clue.position = position;
-              clue.distance = distance;//clue貌似只在客户端覆盖中使用
+              clue.distance = distance;
             }
             break;
           }
-        }   
-        */
-        if (g_settings.loot.lightbackpack && ItemID == 207) {       //白包
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };  //高亮颜色，111是白色，因为lightbackpack是白包
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.medbackpack && ItemID == 208) {     //蓝包
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.heavybackpack && ItemID == 209) {   //紫包
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };  //#4B0082
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 64, highlightParameter);
-        }
-        else if (g_settings.loot.goldbackpack && ItemID == 210) {     //金包
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 64, highlightParameter);
-        }
-        // item id would help so much here, cant make them all the same color
-        // so went with loba glow for body shield and helmet
-        else if (g_settings.loot.shieldupgrade1 &&
-            (ItemID == 214748364993 || ItemID == 14073963583897798)) {  //白甲
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shieldupgrade2 &&
-            (ItemID == 322122547394 || ItemID == 21110945375846599)) {  //蓝甲
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shieldupgrade3 &&
-            (ItemID == 429496729795 || ItemID == 52776987629977800)) {      //紫甲
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 64, highlightParameter);
-        }
-        else if (g_settings.loot.shieldupgrade4 && (ItemID == 429496729796)) {   //金甲
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shieldupgrade5 && ItemID == 536870912201) { //红甲
-            std::array<float, 3> highlightParameter = { 1, 0, 0 };
-
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shieldupgradehead1 && ItemID == 188) {  //白头
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shieldupgradehead2 && ItemID == 189) {  //蓝头
-
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shieldupgradehead3 && ItemID == 190) {  //紫头
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shieldupgradehead4 && ItemID == 191) {      //金头
-
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 64, highlightParameter);
-        }
-        else if (g_settings.loot.accelerant && ItemID == 182) {      //绝招加速剂
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.phoenix && ItemID == 183) {     //凤凰
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.skull &&
-            strstr(glowName,
-                "mdl/Weapons/skull_grenade/skull_grenade_base_v.rmdl")) {    //可能没逆向出头骨id，直接对比物品名称
-            std::array<float, 3> highlightParameter = { 1, 0, 0 };
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.deathbox && item.isBox()) {      //添加死亡之箱的开关判断
-            std::array<float, 3> highlightParameter = { 1, 0, 0 };
-            int settingIndex = 88;
-            item.enableGlow(settingIndex, 32, highlightParameter);
         }
 
-        else if (item.isTrap()) {        //判断名称是否是侵蚀陷阱？毒气罐？好像无效
-            std::array<float, 3> highlightParameter = { 0, 1, 0 };
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-
-        // Gas Trap
-        else if (strstr(glowName,
-            "mdl/props/caustic_gas_tank/caustic_gas_tank.rmdl")) {   //这里也无效
-            std::array<float, 3> highlightParameter = { 0, 1, 0 };
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.healthlarge && ItemID == 184) {     //大药包
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.healthsmall && ItemID == 185) {     //小药
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shieldbattsmall && ItemID == 187) {     //小电
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shieldbattlarge && ItemID == 186) {     //大电
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 48, highlightParameter);
-        }
-        else if (g_settings.loot.sniperammo && ItemID == 144) {      //狙击弹药
-            std::array<float, 3> highlightParameter = { 0.2431, 0.2078, 0.6741 };   //紫色
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.heavyammo && ItemID == 143) {       //重型弹药
-            std::array<float, 3> highlightParameter = { 0.2667, 0.5333, 0.4353 };   //改成墨绿色
-            int settingIndex = 65;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.optic1xhcog && ItemID == 215) {     //1倍镜
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.lightammo && ItemID == 140) {       //轻型子弹
-            std::array<float, 3> highlightParameter = { 0.6902, 0.60, 0.3098 }; //土黄
-            int settingIndex = 66;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.energyammo && ItemID == 141) {      //能量子弹
-            std::array<float, 3> highlightParameter = { 0.2, 1, 0 };        //翠绿
-            int settingIndex = 73;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shotgunammo && ItemID == 142) { //霰弹子弹
-            std::array<float, 3> highlightParameter = { 0.5, 0.0862, 0 };   //暗红
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.lasersight1 && ItemID == 229) { //激光瞄准器，以下3个等级
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.lasersight2 && ItemID == 230) {
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.lasersight3 && ItemID == 231) {
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.sniperammomag1 && ItemID == 244) {  //狙击弹匣，以下四个等级
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.sniperammomag2 && ItemID == 245) {
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.sniperammomag3 && ItemID == 246) {
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.sniperammomag4 && ItemID == 247) {
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 64, highlightParameter);
-        }
-        else if (g_settings.loot.energyammomag1 && ItemID == 240) {  //能量弹匣，四个等级
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.energyammomag2 && ItemID == 241) {
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.energyammomag3 && ItemID == 242) {
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.energyammomag4 && ItemID == 243) {
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 64, highlightParameter);
-        }
-        else if (g_settings.loot.stocksniper1 && ItemID == 255) {    //狙击枪托
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.stocksniper2 && ItemID == 256) {
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.stocksniper3 && ItemID == 257) {
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.stockregular1 && ItemID == 252) {   //标准枪托
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.stockregular2 && ItemID == 253) {
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.stockregular3 && ItemID == 254) {
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        /*取消对白击倒护盾的判断
-        if (g_settings.loot.shielddown1 && ItemID == 203) {     //击倒护盾
-          std::array<unsigned char, 4> highlightFunctionBits = {
-              g_settings
-                  .loot_filled, // InsideFunction  HIGHLIGHT_FILL_LOOT_SCANNED
-              125,              // OutlineFunction OutlineFunction
-                                // HIGHLIGHT_OUTLINE_LOOT_SCANNED
-              64, 64};
+        const std::array<unsigned char, 4> highlightFunctionBits = {
+            g_settings
+                .loot_filled, // InsideFunction  HIGHLIGHT_FILL_LOOT_SCANNED
+            125,              // OutlineFunction OutlineFunction
+                              // HIGHLIGHT_OUTLINE_LOOT_SCANNED
+            64, 64};
+        if (g_settings.loot.lightbackpack && ItemID == 207) {
           std::array<float, 3> highlightParameter = {1, 1, 1};
-          apex_mem.Write<uint32_t>(centity + OFFSET_GLOW_THROUGH_WALLS, 2);
-          static const int contextId = 0;
-          int settingIndex = 72;
-          apex_mem.Write<unsigned char>(
-              centity + OFFSET_HIGHLIGHTSERVERACTIVESTATES + contextId,
-              settingIndex);
-          long highlightSettingsPtr;
-          apex_mem.Read<long>(g_Base + HIGHLIGHT_SETTINGS,
-                              highlightSettingsPtr);
-          apex_mem.Write<typeof(highlightFunctionBits)>(
-              highlightSettingsPtr + 40 * settingIndex + 4,
-              highlightFunctionBits);
-          apex_mem.Write<typeof(highlightParameter)>(
-              highlightSettingsPtr + 40 * settingIndex + 8, highlightParameter);
-        }
-        */
-        else if (g_settings.loot.shielddown2 && ItemID == 204) {
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shielddown3 && ItemID == 205) {
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shielddown4 && ItemID == 206) {
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 64, highlightParameter);
-        }
-        else if (g_settings.loot.lightammomag1 && ItemID == 232) {   //轻型弹匣
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.lightammomag2 && ItemID == 233) {
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.lightammomag3 && ItemID == 234) {
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.lightammomag4 && ItemID == 235) {
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 64, highlightParameter);
-        }
-        else if (g_settings.loot.heavyammomag1 && ItemID == 236) {   //重型弹匣
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.heavyammomag2 && ItemID == 237) {
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.heavyammomag3 && ItemID == 238) {
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.heavyammomag4 && ItemID == 239) {
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 64, highlightParameter);
-        }
-        else if (g_settings.loot.optic2xhcog && ItemID == 216) {     //2倍镜
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 48, highlightParameter);
-        }
-        else if (g_settings.loot.opticholo1x && ItemID == 217) { //圆形1倍镜
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.opticholo1x2x && ItemID == 218) {       //1x2x切换
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.opticthreat && ItemID == 219) {     //金1倍
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 64, highlightParameter);
-        }
-        else if (g_settings.loot.optic3xhcog && ItemID == 220) {     //3倍镜
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.optic2x4x && ItemID == 221) {       //2x4x
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.opticsniper6x && ItemID == 222) {       //6倍镜
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.opticsniper4x8x && ItemID == 223) {     //4x8x
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.opticsniperthreat && ItemID == 224) {       //金狙击镜
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 64, highlightParameter);
-        }
-        else if (g_settings.loot.suppressor1 && ItemID == 225) {     //枪管？
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.suppressor2 && ItemID == 226) {
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.suppressor3 && ItemID == 227) {
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.turbo_charger && ItemID == 258) {       //涡轮增压器
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 48, highlightParameter);
-        }
-        else if (g_settings.loot.skull_piecer && ItemID == 260) {        //穿颅器
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 48, highlightParameter);
-        }
-        else if (g_settings.loot.hammer_point && ItemID == 263) {        //锤击点
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 48, highlightParameter);
-        }
-        else if (g_settings.loot.disruptor_rounds && ItemID == 262) {    //干扰器
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 48, highlightParameter);
-        }
-        else if (g_settings.loot.boosted_loader && ItemID == 272) {      //加速装填器
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 48, highlightParameter);
-        }
-        else if (g_settings.loot.shotgunbolt1 && ItemID == 248) {        //霰弹枪栓
-            std::array<float, 3> highlightParameter = { 1, 1, 1 };
-            int settingIndex = 72;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shotgunbolt2 && ItemID == 249) {
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shotgunbolt3 && ItemID == 250) {
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 74;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.shotgunbolt4 && ItemID == 251) {
-            std::array<float, 3> highlightParameter = { 1, 0.8431, 0 };
-            int settingIndex = 75;
-            item.enableGlow(settingIndex, 48, highlightParameter);
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.medbackpack && ItemID == 208) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.heavybackpack && ItemID == 209) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.goldbackpack && ItemID == 210) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.shieldupgrade1 &&
+                   (ItemID == 214748364993 || ItemID == 14073963583897798)) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.shieldupgrade2 &&
+                   (ItemID == 322122547394 || ItemID == 21110945375846599)) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.shieldupgrade3 &&
+                   (ItemID == 429496729795 || ItemID == 52776987629977800)) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.shieldupgrade4 && (ItemID == 429496729796)) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.shieldupgrade5 && ItemID == 536870912201) {
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 67);
+        } else if (g_settings.loot.shieldupgradehead1 && ItemID == 188) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.shieldupgradehead2 && ItemID == 189) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.shieldupgradehead3 && ItemID == 190) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.shieldupgradehead4 && ItemID == 191) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.accelerant && ItemID == 182) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.phoenix && ItemID == 183) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.skull &&
+                   strstr(glowName, xorstr_("mdl/Weapons/skull_grenade/"
+                                            "skull_grenade_base_v.rmdl"))) {
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 67);
+        } else if (item.isBox() && g_settings.deathbox) {
+          std::array<unsigned char, 4> highlightMode = {
+              0,   // InsideFunction  HIGHLIGHT_FILL_LOOT_SCANNED
+              125, // OutlineFunction OutlineFunction
+                   // HIGHLIGHT_OUTLINE_LOOT_SCANNED
+              64, 64};
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightMode, highlightParameter, 88);
+        } else if (item.isTrap()) {
+          std::array<unsigned char, 4> highlightMode = {
+              0,   // InsideFunction  HIGHLIGHT_FILL_LOOT_SCANNED
+              125, // OutlineFunction OutlineFunction
+                   // HIGHLIGHT_OUTLINE_LOOT_SCANNED
+              64, 64};
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightMode, highlightParameter, 67);
+        } else if (strstr(glowName,
+                          xorstr_("mdl/props/caustic_gas_tank/"
+                                  "caustic_gas_tank.rmdl"))) { // Gas
+                                                               // Trap
+          std::array<unsigned char, 4> highlightMode = {
+              0,   // InsideFunction  HIGHLIGHT_FILL_LOOT_SCANNED
+              125, // OutlineFunction OutlineFunction
+                   // HIGHLIGHT_OUTLINE_LOOT_SCANNED
+              64, 64};
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightMode, highlightParameter, 67);
+        } else if (g_settings.loot.healthlarge && ItemID == 184) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.healthsmall && ItemID == 185) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.shieldbattsmall && ItemID == 187) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.shieldbattlarge && ItemID == 186) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.sniperammo && ItemID == 144) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.heavyammo && ItemID == 143) {
+          std::array<float, 3> highlightParameter = {0, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 65);
+        } else if (g_settings.loot.optic1xhcog && ItemID == 215) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.lightammo && ItemID == 140) {
+          std::array<float, 3> highlightParameter = {1, 0.5490, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 66);
+        } else if (g_settings.loot.energyammo && ItemID == 141) {
+          std::array<float, 3> highlightParameter = {0.2, 1, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 73);
+        } else if (g_settings.loot.shotgunammo && ItemID == 142) {
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 67);
+        } else if (g_settings.loot.lasersight1 && ItemID == 229) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.lasersight2 && ItemID == 230) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.lasersight3 && ItemID == 231) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.sniperammomag1 && ItemID == 244) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.sniperammomag2 && ItemID == 245) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.sniperammomag3 && ItemID == 246) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.sniperammomag4 && ItemID == 247) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.energyammomag1 && ItemID == 240) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.energyammomag2 && ItemID == 241) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.energyammomag3 && ItemID == 242) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.energyammomag4 && ItemID == 243) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.stocksniper1 && ItemID == 255) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.stocksniper2 && ItemID == 256) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.stocksniper3 && ItemID == 257) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.stockregular1 && ItemID == 252) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.stockregular2 && ItemID == 253) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.stockregular3 && ItemID == 254) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.shielddown1 && ItemID == 203) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.shielddown2 && ItemID == 204) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.shielddown3 && ItemID == 205) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.shielddown4 && ItemID == 206) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.lightammomag1 && ItemID == 232) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.lightammomag2 && ItemID == 233) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.lightammomag3 && ItemID == 234) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.lightammomag4 && ItemID == 235) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.heavyammomag1 && ItemID == 236) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.heavyammomag2 && ItemID == 237) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.heavyammomag3 && ItemID == 238) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.heavyammomag4 && ItemID == 239) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.optic2xhcog && ItemID == 216) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.opticholo1x && ItemID == 217) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.opticholo1x2x && ItemID == 218) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.opticthreat && ItemID == 219) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.optic3xhcog && ItemID == 220) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.optic2x4x && ItemID == 221) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.opticsniper6x && ItemID == 222) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.opticsniper4x8x && ItemID == 223) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.opticsniperthreat && ItemID == 224) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.suppressor1 && ItemID == 225) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.suppressor2 && ItemID == 226) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.suppressor3 && ItemID == 227) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.turbo_charger && ItemID == 258) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.skull_piecer && ItemID == 260) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.hammer_point && ItemID == 263) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.disruptor_rounds && ItemID == 262) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.boosted_loader && ItemID == 272) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
+        } else if (g_settings.loot.shotgunbolt1 && ItemID == 248) {
+          std::array<float, 3> highlightParameter = {1, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 72);
+        } else if (g_settings.loot.shotgunbolt2 && ItemID == 249) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.shotgunbolt3 && ItemID == 250) {
+          std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 74);
+        } else if (g_settings.loot.shotgunbolt4 && ItemID == 251) {
+          std::array<float, 3> highlightParameter = {1, 0.8431, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 75);
         }
         // Nades
-        else if (g_settings.loot.grenade_frag && ItemID == 213) {    //破片手雷
-            std::array<float, 3> highlightParameter = { 1, 0, 0 };
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-
-        else if (g_settings.loot.grenade_thermite && ItemID == 212) {    //铝热剂
-            std::array<float, 3> highlightParameter = { 1, 0, 0 };
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.grenade_arc_star && ItemID == 214) {        //电弧星
-            std::array<float, 3> highlightParameter = { 0, 0, 1 };
-            int settingIndex = 70;
-            item.enableGlow(settingIndex, 32, highlightParameter);
+        else if (g_settings.loot.grenade_frag && ItemID == 213) {
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 67);
+        } else if (g_settings.loot.grenade_thermite && ItemID == 212) {
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 67);
+        } else if (g_settings.loot.grenade_arc_star && ItemID == 214) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 70);
         }
         // Weapons
-        else if (g_settings.loot.weapon_kraber && ItemID == 1) {     //克莱伯
-            std::array<float, 3> highlightParameter = { 1, 0, 0 };
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
+        else if (g_settings.loot.weapon_kraber && ItemID == 1) {
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 67);
+        } else if (g_settings.loot.weapon_mastiff && ItemID == 3) {
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 67);
+        } else if (g_settings.loot.weapon_lstar && ItemID == 7) {
+          std::array<float, 3> highlightParameter = {0.2, 1, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 73);
+        } else if (g_settings.loot.weapon_nemesis && ItemID == 135) {
+          std::array<float, 3> highlightParameter = {0.2, 1, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 73);
+        } else if (g_settings.loot.weapon_havoc && ItemID == 13) {
+          std::array<float, 3> highlightParameter = {0.2, 1, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 73);
+        } else if (g_settings.loot.weapon_devotion && ItemID == 18) {
+          std::array<float, 3> highlightParameter = {0.2, 1, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 73);
+        } else if (g_settings.loot.weapon_triple_take && ItemID == 23) {
+          std::array<float, 3> highlightParameter = {0.2, 1, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 73);
+        } else if (g_settings.loot.weapon_flatline && ItemID == 28) {
+          std::array<float, 3> highlightParameter = {0, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 65);
+        } else if (g_settings.loot.weapon_hemlock && ItemID == 33) {
+          std::array<float, 3> highlightParameter = {0, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 65);
+        } else if (g_settings.loot.weapon_g7_scout && ItemID == 39) {
+          std::array<float, 3> highlightParameter = {1, 0.5490, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 66);
+        } else if (g_settings.loot.weapon_alternator && ItemID == 44) {
+          std::array<float, 3> highlightParameter = {1, 0.5490, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 66);
+        } else if (g_settings.loot.weapon_r99 && ItemID == 49) {
+          std::array<float, 3> highlightParameter = {1, 0.5490, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 66);
+        } else if (g_settings.loot.weapon_prowler && ItemID == 56) {
+          std::array<float, 3> highlightParameter = {0, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 65);
+        } else if (g_settings.loot.weapon_volt && ItemID == 60) {
+          std::array<float, 3> highlightParameter = {0.2, 1, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 73);
+        } else if (g_settings.loot.weapon_longbow && ItemID == 65) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.weapon_charge_rifle && ItemID == 70) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.weapon_spitfire && ItemID == 75) {
+          std::array<float, 3> highlightParameter = {1, 0.5490, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 66);
+        } else if (g_settings.loot.weapon_r301 && ItemID == 80) {
+          std::array<float, 3> highlightParameter = {1, 0.5490, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 66);
+        } else if (g_settings.loot.weapon_eva8 && ItemID == 85) {
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 67);
+        } else if (g_settings.loot.weapon_peacekeeper && ItemID == 90) {
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 67);
+        } else if (g_settings.loot.weapon_mozambique && ItemID == 95) {
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 67);
+        } else if (g_settings.loot.weapon_wingman && ItemID == 106) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.weapon_p2020 && ItemID == 111) {
+          std::array<float, 3> highlightParameter = {1, 0.5490, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 66);
+        } else if (g_settings.loot.weapon_re45 && ItemID == 116) {
+          std::array<float, 3> highlightParameter = {1, 0.5490, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 66);
+        } else if (g_settings.loot.weapon_sentinel && ItemID == 122) {
+          std::array<float, 3> highlightParameter = {0, 0, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 69);
+        } else if (g_settings.loot.weapon_bow && ItemID == 127) {
+          std::array<float, 3> highlightParameter = {1, 0, 0};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 67);
+        } else if (g_settings.loot.weapon_3030_repeater && ItemID == 129) {
+          std::array<float, 3> highlightParameter = {0, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 65);
+        } else if (g_settings.loot.weapon_rampage && ItemID == 146) {
+          std::array<float, 3> highlightParameter = {0, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 65);
+        } else if (g_settings.loot.weapon_car_smg && ItemID == 151) {
+          std::array<float, 3> highlightParameter = {0, 1, 1};
+          item.enableGlow(highlightFunctionBits, highlightParameter, 65);
         }
-        else if (g_settings.loot.weapon_mastiff && ItemID == 3) {        //敖犬
-            std::array<float, 3> highlightParameter = { 1, 0, 0 };
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_lstar && ItemID == 7) {      //lstar
 
-            std::array<float, 3> highlightParameter = { 0.2, 1, 0 };
-            int settingIndex = 73;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        // new gun, nemesis
-        else if (g_settings.loot.weapon_nemesis && ItemID == 135) {      //复仇女神
-            std::array<float, 3> highlightParameter = { 0.2, 1, 0 };
-            int settingIndex = 73;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-
-        else if (g_settings.loot.weapon_havoc && ItemID == 13) {     //哈沃克
-            std::array<float, 3> highlightParameter = { 0.2, 1, 0 };
-            int settingIndex = 73;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_devotion && ItemID == 18) {  //专注轻机枪
-            std::array<float, 3> highlightParameter = { 0.2, 1, 0 };
-            int settingIndex = 73;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_triple_take && ItemID == 23) {   //三重狙击枪
-            std::array<float, 3> highlightParameter = { 0.2, 1, 0 };
-            int settingIndex = 73;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_flatline && ItemID == 28) {      //平行
-            std::array<float, 3> highlightParameter = { 0, 1, 1 };
-            int settingIndex = 65;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_hemlock && ItemID == 33) {       //汉姆洛克
-            std::array<float, 3> highlightParameter = { 0, 1, 1 };
-            int settingIndex = 65;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_g7_scout && ItemID == 39) {      //g7
-            std::array<float, 3> highlightParameter = { 1, 0.5490, 0 };
-            int settingIndex = 66;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_alternator && ItemID == 44) {        //转换者
-            std::array<float, 3> highlightParameter = { 1, 0.5490, 0 };
-            int settingIndex = 66;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_r99 && ItemID == 49) {
-            std::array<float, 3> highlightParameter = { 1, 0.5490, 0 };
-            int settingIndex = 66;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_prowler && ItemID == 56) {   //猎兽
-            std::array<float, 3> highlightParameter = { 0, 1, 1 };
-            int settingIndex = 65;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_volt && ItemID == 60) {  //电能冲锋枪
-            std::array<float, 3> highlightParameter = { 0.2, 1, 0 };
-            int settingIndex = 73;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_longbow && ItemID == 65) {       //长弓
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_charge_rifle && ItemID == 70) {  //充能步枪
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_spitfire && ItemID == 75) {  //喷火
-            std::array<float, 3> highlightParameter = { 1, 0.5490, 0 };
-            int settingIndex = 66;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_r301 && ItemID == 80) {
-            std::array<float, 3> highlightParameter = { 1, 0.5490, 0 };
-            int settingIndex = 66;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_eva8 && ItemID == 85) {
-            std::array<float, 3> highlightParameter = { 0.5, 0.0862, 0 };
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_peacekeeper && ItemID == 90) {
-            std::array<float, 3> highlightParameter = { 0.5, 0.0862, 0 };
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_mozambique && ItemID == 95) {
-            std::array<float, 3> highlightParameter = { 0.5, 0.0862, 0 };
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_wingman && ItemID == 106) {      //小帮手
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_p2020 && ItemID == 111) {
-            std::array<float, 3> highlightParameter = { 1, 0.5490, 0 };
-            int settingIndex = 66;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_re45 && ItemID == 116) {
-            std::array<float, 3> highlightParameter = { 1, 0.5490, 0 };
-            int settingIndex = 66;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_sentinel && ItemID == 122) { //哨兵
-            std::array<float, 3> highlightParameter = { 0.2941, 0, 0.5098 };
-            int settingIndex = 69;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_bow && ItemID == 127) {
-            std::array<float, 3> highlightParameter = { 1, 0, 0 };
-            int settingIndex = 67;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_3030_repeater && ItemID == 129) {
-            std::array<float, 3> highlightParameter = { 0, 1, 1 };
-            int settingIndex = 65;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_rampage && ItemID == 146) {      //暴走
-            std::array<float, 3> highlightParameter = { 0, 1, 1 };
-            int settingIndex = 65;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
-        else if (g_settings.loot.weapon_car_smg && ItemID == 151) {
-            std::array<float, 3> highlightParameter = { 0, 1, 1 };
-            int settingIndex = 65;
-            item.enableGlow(settingIndex, 32, highlightParameter);
-        }
         // CREDITS to Rikkie
         // https://www.unknowncheats.me/forum/members/169606.html for all the
         // weapon ids and item ids code, you are a life saver!
@@ -1949,7 +1583,8 @@ void terminal() {
 int main(int argc, char *argv[]) {
   load_settings();
 
-  if (geteuid() != 0) {
+  // memflow-kvm available or run as root
+  if (geteuid() != 0 && access(xorstr_("/dev/memflow"), F_OK) == -1) {
     // run as root..
     print_run_as_root();
 
@@ -1958,14 +1593,10 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
-  const char *ap_proc = "r5apex.exe";
-
   std::thread aimbot_thr;
   std::thread esp_thr;
   std::thread actions_thr;
   std::thread cactions_thr;
-  // Used to change things on a timer
-  //std::thread TriggerBotRun_thr;
   std::thread terminal_thr;
   std::thread overlay_thr;
   std::thread itemglow_thr;
@@ -1982,20 +1613,17 @@ int main(int argc, char *argv[]) {
         esp_t = false;
         actions_t = false;
         cactions_t = false;
-        //TriggerBotRun_t = false;
         terminal_t = false;
         overlay_t = false;
         item_t = false;
         control_t = false;
         g_Base = 0;
-        quit_tui_menu();
+        tui_menu_quit();
 
         aimbot_thr.~thread();
         esp_thr.~thread();
         actions_thr.~thread();
         cactions_thr.~thread();
-        // Used to change things on a timer
-        //TriggerBotRun_thr.~thread();
         terminal_thr.~thread();
         overlay_thr.~thread();
         itemglow_thr.~thread();
@@ -2003,27 +1631,25 @@ int main(int argc, char *argv[]) {
       }
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
-      printf("Searching for apex process...\n");
+      printf("%s", xorstr_("Searching for apex process...\n"));
 
-      apex_mem.open_proc(ap_proc);
+      apex_mem.open_proc(xorstr_("r5apex.exe"));
 
       if (apex_mem.get_proc_status() == process_status::FOUND_READY) {
         g_Base = apex_mem.get_proc_baseaddr();
-        printf("\nApex process found\n");
-        printf("Base: %lx\n", g_Base);
+        printf("%s", xorstr_("\nApex process found\n"));
+        printf("%s%lx%s", xorstr_("Base: "), g_Base, xorstr_("\n"));
 
         aimbot_thr = std::thread(AimbotLoop);
         esp_thr = std::thread(EspLoop);
         actions_thr = std::thread(DoActions);
         cactions_thr = std::thread(ClientActions);
-        //TriggerBotRun_thr = std::thread(TriggerBotRun);
         itemglow_thr = std::thread(item_glow_t);
         control_thr = std::thread(ControlLoop);
         aimbot_thr.detach();
         esp_thr.detach();
         actions_thr.detach();
         cactions_thr.detach();
-        //TriggerBotRun_thr.detach();
         itemglow_thr.detach();
         control_thr.detach();
       }
@@ -2033,7 +1659,7 @@ int main(int argc, char *argv[]) {
       const auto g_settings = global_settings();
       if (g_settings.debug_mode) {
         if (terminal_t) {
-          quit_tui_menu();
+          tui_menu_quit();
         }
       } else {
         if (!terminal_t) {

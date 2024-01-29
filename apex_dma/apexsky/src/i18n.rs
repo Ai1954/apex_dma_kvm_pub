@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use fluent::{FluentBundle, FluentResource};
-
+use obfstr::obfstr as s;
 use strum::{EnumString, EnumVariantNames};
 use strum_macros::EnumIter;
 use sys_locale::get_locale;
@@ -63,6 +63,10 @@ pub enum MessageId {
     MenuValueNadeAimOn,
     MenuItemToggleOnevone,
     MenuItemToggleNoRecoil,
+    MenuItemRecoilXValue,
+    MenuItemRecoilYValue,
+    InputPromptRecoilValue,
+    InfoInvalidRecoilValue,
     MenuItemSetFpsPredict,
     MenuValueCalcFps,
     InputPromptFpsPredict,
@@ -222,7 +226,20 @@ pub enum MessageId {
     LootLevel5Name,
     MenuItemFavoritePlayerGlow,
     MenuItemKbdBacklightCtrl,
-    MenuItemBowChargeRifleAim,
+    AimbotMenuTitle,
+    MenuItemAimbotMode,
+    MenuValueAimbotOff,
+    MenuValueAimbotNoVisCheck,
+    MenuValueAimbotOn,
+    InputPromptAimbotMode,
+    MenuItemAimDist,
+    InputPromptAimDist,
+    MenuItemHeadshotDist,
+    InputPromptHeadshotDist,
+    MenuItemSkynadeSmooth,
+    MenuItemSpectatorsMenu,
+    SpectatorsMenuTitle,
+    SpectatorsSection,
     MenuItemShotgunAutoShot,
     MenuItemSuperGrpple,
     MenuItemAutoTapstrafe,
@@ -248,14 +265,14 @@ fn get_bundle<'a>(accept_locale: &'a str) -> FluentBundle<FluentResource> {
             include_str!("../resource/i18n/en-US.ftl").to_owned(),
         ),
     };
-    let res = FluentResource::try_new(ftl_string).expect("Failed to parse an FTL string.");
+    let res = FluentResource::try_new(ftl_string).expect(s!("Failed to parse an FTL string."));
 
-    let lang_id: LanguageIdentifier = locale.parse().expect("Parsing failed.");
+    let lang_id: LanguageIdentifier = locale.parse().expect(s!("Parsing failed."));
     let mut bundle = FluentBundle::new(vec![lang_id]);
 
     bundle
         .add_resource(res)
-        .expect("Failed to add FTL resources to the bundle.");
+        .expect(s!("Failed to add FTL resources to the bundle."));
     bundle
 }
 
@@ -263,11 +280,12 @@ fn get_bundle<'a>(accept_locale: &'a str) -> FluentBundle<FluentResource> {
 macro_rules! i18n_msg {
     ( $bundle:expr, $message_id:ident) => {{
         use crate::i18n::MessageId;
+        use obfstr::obfstr as s;
         let msg = $bundle
             .get_message(&MessageId::$message_id.to_string())
-            .expect("Message doesn't exist.");
+            .expect(s!("Message doesn't exist."));
         let mut errors = vec![];
-        let pattern = msg.value().expect("Message has no value.");
+        let pattern = msg.value().expect(s!("Message has no value."));
         let value = $bundle.format_pattern(&pattern, None, &mut errors);
         value
     }};
@@ -277,16 +295,18 @@ macro_rules! i18n_msg {
 macro_rules! i18n_msg_format {
     ( $bundle:expr, $message_id:ident, $args:expr) => {{
         use crate::i18n::MessageId;
+        use obfstr::obfstr as s;
         let msg = $bundle
             .get_message(&MessageId::$message_id.to_string())
-            .expect("Message doesn't exist.");
+            .expect(s!("Message doesn't exist."));
         let mut errors = vec![];
-        let pattern = msg.value().expect("Message has no value.");
+        let pattern = msg.value().expect(s!("Message has no value."));
         let value = $bundle.format_pattern(&pattern, Some(&$args), &mut errors);
         value
     }};
 }
 
+#[allow(dead_code)]
 pub fn get<'a, 'b>(
     accept_language: &'a str,
     message_ids: Vec<&'static str>,
@@ -297,8 +317,8 @@ pub fn get<'a, 'b>(
     for message_id in message_ids {
         let msg = bundle
             .get_message(message_id)
-            .expect("Message doesn't exist.");
-        let pattern = msg.value().expect("Message has no value.");
+            .expect(s!("Message doesn't exist."));
+        let pattern = msg.value().expect(s!("Message has no value."));
         let value = bundle.format_pattern(&pattern, None, &mut errors);
         errors.clear();
         result.insert(message_id, value.to_string());
@@ -309,7 +329,7 @@ pub fn get<'a, 'b>(
 #[test]
 fn get_all_message_ids() {
     use strum::IntoEnumIterator;
-    println!("- i18n message id -----------");
+    println!("{}", s!("- i18n message id -----------"));
     MessageId::iter().for_each(|i| println!("{} = ", i));
-    println!("- i18n message id END--------");
+    println!("{}", s!("- i18n message id END--------"));
 }
