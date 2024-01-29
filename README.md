@@ -31,6 +31,9 @@
 
 
 ## About The Project
+
+**This repository is only slightly modified based on personal habits on chettoy's project.Thanks for everything chettoy did**
+
 Apex Legends QEMU/KVM hack
 
 UnknownCheats thread: https://www.unknowncheats.me/forum/apex-legends/406426-kvm-vmread-apex-esp-aimbot.html

@@ -364,10 +364,6 @@ pub(super) fn build_main_menu(
                 None
             },
             (),
-        );
-    menu = menu
-            .add_dummy_item()
-            .add_text_item("Game Version:v3.0.55.37")
-            .add_dummy_item()
-            .into()
+        )
+        .into()
 }
