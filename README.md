@@ -136,7 +136,7 @@ Additional information:
 
 
 
-Click on *[Actions](https://github.com/Jotalz/apex_dma_kvm_pub/actions)* to download the auto-built artifacts.
+Click on *[Actions](https://github.com/chettoy/apex_dma_kvm_pub/actions)* to download the auto-built artifacts.
 
 Or compile it yourself.
 
@@ -160,14 +160,16 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 **Install Build Dependencies (Ubuntu):**
 
 ```bash
-sudo apt install cmake clang libzstd-dev libglfw3-dev libfreetype6-dev libvulkan-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev wayland-protocols libwayland-dev libxkbcommon-dev
+sudo apt install cmake clang protobuf-compiler libzstd-dev libglfw3-dev libfreetype6-dev libvulkan-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev wayland-protocols libwayland-dev libxkbcommon-dev
 ```
 
 **Build:**
 
 ```shell
-git clone --recurse https://github.com/Jotalz/apex_dma_kvm_pub
-cd apex_dma_kvm_pub/apex_dma
+git clone --recurse https://github.com/chettoy/apex_dma_kvm_pub
+cd apex_dma_kvm_pub
+git submodule update --init --recursive
+cd apex_dma
 ./build.sh
 ```
 
@@ -213,11 +215,11 @@ cd apex_dma_kvm_pub/apex_dma
 <!-- MARKDOWN LINKS & IMAGES -->
 [contributors-shield]: https://img.shields.io/github/contributors/chettoy/apex_dma_kvm_pub.svg?style=for-the-badge
 [contributors-url]: https://github.com/chettoy/apex_dma_kvm_pub/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/Jotalz/apex_dma_kvm_pub.svg?style=for-the-badge
-[forks-url]: https://github.com/Jotalz/apex_dma_kvm_pub/network/members
+[forks-shield]: https://img.shields.io/github/forks/chettoy/apex_dma_kvm_pub.svg?style=for-the-badge
+[forks-url]: https://github.com/chettoy/apex_dma_kvm_pub/network/members
 [stars-shield]: https://img.shields.io/github/starschettoy/apex_dma_kvm_pub.svg?style=for-the-badge
 [stars-url]: https://github.com/chettoy/apex_dma_kvm_pub/stargazers
-[issues-shield]: https://img.shields.io/github/issues/Jotalz/apex_dma_kvm_pub.svg?style=for-the-badge
-[issues-url]: https://github.com/Jotalz/apex_dma_kvm_pub/issues
-[license-shield]: https://img.shields.io/github/license/Jotalz/apex_dma_kvm_pub.svg?style=for-the-badge
-[license-url]: https://github.com/Jotalz/apex_dma_kvm_pub/blob/main/LICENSE.txt
+[issues-shield]: https://img.shields.io/github/issues/chettoy/apex_dma_kvm_pub.svg?style=for-the-badge
+[issues-url]: https://github.com/chettoy/apex_dma_kvm_pub/issues
+[license-shield]: https://img.shields.io/github/license/chettoy/apex_dma_kvm_pub.svg?style=for-the-badge
+[license-url]: https://github.com/chettoy/apex_dma_kvm_pub/blob/main/LICENSE.txt

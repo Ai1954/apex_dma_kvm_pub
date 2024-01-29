@@ -77,9 +77,10 @@ menu-item-big-map-feat = Toggle F8 Map Radar
 menu-item-player-armor-glow-color = Toggle Player Armor Glow Color
 menu-item-weapon-model-glow = Weapon Model Glow
 info-weapon-model-glow = 
-    Normal => colorful
+    Normal => Not glowing
     Being watched by teammates => green
-    Being watched by others => red
+    Being watched by others => bule->orange->red->colorful
+                                 <3    <5    <7    7+
 menu-item-toggle-overlay = Toggle Overlay
 menu-value-no-overlay = no-overlay
 menu-value-external-overlay = external-overlay

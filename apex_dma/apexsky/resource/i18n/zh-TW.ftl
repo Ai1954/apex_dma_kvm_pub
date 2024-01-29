@@ -77,9 +77,10 @@ menu-item-big-map-feat = F8地圖雷達功能
 menu-item-player-armor-glow-color = 護盾顏色發光
 menu-item-weapon-model-glow = 武器模型發光
 info-weapon-model-glow = 
-    通常 => 彩色
-    被隊友觀看時 => 綠色
-    被別人觀看時 => 紅色
+    通常 => 不發光
+    被隊友觀戰時 => 綠色
+    被他人觀戰時 => 藍色->橘色->紅色->彩色
+                    <3     <5   <7   7+
 menu-item-toggle-overlay = 繪製層
 menu-value-no-overlay = 無覆蓋層
 menu-value-external-overlay = 外部繪製層
