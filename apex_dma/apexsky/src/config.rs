@@ -245,74 +245,74 @@ impl Default for Loot {
             goldbackpack: true,
             // Shield upgrades
             shieldupgrade1: false, // white
-            shieldupgrade2: true,  // blue
+            shieldupgrade2: false,  // blue
             shieldupgrade3: true,  // purple
             shieldupgrade4: true,  // gold
             shieldupgrade5: true,  // red
             shieldupgradehead1: false,
-            shieldupgradehead2: true,
-            shieldupgradehead3: true,
+            shieldupgradehead2: false,
+            shieldupgradehead3: false,
             shieldupgradehead4: true,
             shielddown1: false,
-            shielddown2: true,
-            shielddown3: true,
+            shielddown2: false,
+            shielddown3: false,
             shielddown4: true,
             // heaing and Misc
             accelerant: false,
-            phoenix: true,
+            phoenix: false,
             healthlarge: true,
             healthsmall: false,
             shieldbattsmall: false,
             shieldbattlarge: true,
             // Ammo
             sniperammo: false,
-            heavyammo: true,
-            lightammo: true,
-            energyammo: true,
+            heavyammo: false,
+            lightammo: false,
+            energyammo: false,
             shotgunammo: false,
             // Optics
             optic1xhcog: false,
             optic2xhcog: true,
             opticholo1x: false,
-            opticholo1x2x: true,
+            opticholo1x2x: false,
             opticthreat: false,
-            optic3xhcog: true,
-            optic2x4x: true,
+            optic3xhcog: false,
+            optic2x4x: false,
             opticsniper6x: false,
-            opticsniper4x8x: true,
-            opticsniperthreat: false,
+            opticsniper4x8x: false,
+            opticsniperthreat: true,
             // Magazines
             sniperammomag1: false,
-            energyammomag1: true,
-            lightammomag1: true,
-            heavyammomag1: true,
+            energyammomag1: false,
+            lightammomag1: false,
+            heavyammomag1: false,
             sniperammomag2: false,
-            energyammomag2: true,
-            lightammomag2: true,
-            heavyammomag2: true,
+            energyammomag2: false,
+            lightammomag2: false,
+            heavyammomag2: false,
             sniperammomag3: false,
-            energyammomag3: true,
-            lightammomag3: true,
-            heavyammomag3: true,
-            sniperammomag4: false,
+            energyammomag3: false,
+            lightammomag3: false,
+            heavyammomag3: false,
+            sniperammomag4: true,
             energyammomag4: true,
             lightammomag4: true,
             heavyammomag4: true,
             // Attachments
             lasersight1: false,
-            lasersight2: true,
-            lasersight3: true,
+            lasersight2: false,
+            lasersight3: false,
             lasersight4: true,
             stocksniper1: false,
-            stocksniper2: true,
-            stocksniper3: true,
+            stocksniper2: false,
+            stocksniper3: false,
             stocksniper4: true,
             stockregular1: false,
-            stockregular2: true,
-            stockregular3: true,
+            stockregular2: false,
+            stockregular3: false,
             suppressor1: false,
-            suppressor2: true,
-            suppressor3: true,
+            suppressor2: false,
+            suppressor3: false,
             turbo_charger: false,
             skull_piecer: false,
             hammer_point: true,
@@ -332,7 +332,7 @@ impl Default for Loot {
             grenade_arc_star: false,
             grenade_thermite: false,
             // Supply Drop Weapons
-            weapon_kraber: true,
+            weapon_kraber: false,
             weapon_bow: false,
             weapon_prowler: false,
             // Shotguns
@@ -341,26 +341,26 @@ impl Default for Loot {
             weapon_peacekeeper: false,
             weapon_mozambique: false,
             // Energy weapons
-            weapon_lstar: true,
-            weapon_nemesis: true,
+            weapon_lstar: false,
+            weapon_nemesis: false,
             weapon_havoc: false,
             weapon_devotion: false,
             weapon_triple_take: false,
             weapon_volt: false,
             // Heavy Weapons
-            weapon_flatline: true,
-            weapon_hemlock: true,
+            weapon_flatline: false,
+            weapon_hemlock: false,
             weapon_3030_repeater: false,
             weapon_rampage: false,
-            weapon_car_smg: true,
+            weapon_car_smg: false,
             // Light weapons
             weapon_p2020: false,
-            weapon_re45: true,
+            weapon_re45: false,
             weapon_g7_scout: false,
             weapon_alternator: false,
-            weapon_r99: true,
-            weapon_spitfire: true,
-            weapon_r301: true,
+            weapon_r99: false,
+            weapon_spitfire: false,
+            weapon_r301: false,
             // Snipers.. wingman is the odd one...and the bow..
             weapon_wingman: false,
             weapon_longbow: false,
@@ -385,27 +385,27 @@ impl Default for Settings {
             // Gamepad or Keyboard config, Only one true at once or it wont work.
             aimbot_settings: AimbotSettings::default(),
             aimbot_hot_key_1: 108,
-            aimbot_hot_key_2: 109,
+            aimbot_hot_key_2: 79,
             // Done with Gamepad or Keyboard config
             // triggerbot?
             trigger_bot_hot_key: 81,
             // Terminal Stuff
-            loot_filled_toggle: true,
-            player_filled_toggle: true,
+            loot_filled_toggle: false,
+            player_filled_toggle: false,
             super_key_toggle: true,
             super_grpple: true,
-            auto_tapstrafe: false,
+            auto_tapstrafe: true,
             // end Terminal Stuff
             onevone: false,
             tdm_toggle: false,
-            item_glow: false,
-            player_glow: false,
-            player_glow_armor_color: true,
+            item_glow: true,
+            player_glow: true,
+            player_glow_armor_color: false,
             player_glow_love_user: true,
-            weapon_model_glow: false,
+            weapon_model_glow: true,
             kbd_backlight_control: false,
-            deathbox: false,
-            esp: true,
+            deathbox: true,
+            esp: false,
             esp_visuals: EspVisuals::default(),
             mini_map_radar: true,
             mini_map_guides: true,
@@ -415,22 +415,22 @@ impl Default for Settings {
             main_map_radar_dot_size1: 5,
             main_map_radar_dot_size2: 5,
             max_dist: 3800.0 * 40.0, // Max Distance of ESP 3800 is full map
-            map_radar_testing: false,
-            show_aim_target: true,
-            game_fps: 75.0,       // Game FPS for aim prediction
+            map_radar_testing: true,
+            show_aim_target: false,
+            game_fps: 143.0,       // Game FPS for aim prediction
             calc_game_fps: false, // Automatic calculation of game fps
             firing_range: false,
             // Player Glow Color and Brightness.
             // inside fill
-            player_glow_inside_value: 14, // 0 = no fill, 14 = full fill
+            player_glow_inside_value: 0, // 0 = no fill, 14 = full fill
             player_glow_outline_size: 32, // 0-255
             // Not Visable
-            glow_r_not: 1.0, // Red 0-1, higher is brighter color.
-            glow_g_not: 0.0,
+            glow_r_not: 0.0, // Red 0-1, higher is brighter color.
+            glow_g_not: 1.0,
             glow_b_not: 0.0,
             // Visable
-            glow_r_viz: 0.0,
-            glow_g_viz: 1.0,
+            glow_r_viz: 1.0,
+            glow_g_viz: 0.0,
             glow_b_viz: 0.0,
             // Knocked
             glow_r_knocked: 0.80,
@@ -440,7 +440,7 @@ impl Default for Settings {
             // Item Configs
             // loot Fill
             loot_filled: 0, // 0 no fill, 14 100% fill
-            loot_outline: 0,
+            loot_outline: 32,
 
             loot: Loot::default(),
         }
