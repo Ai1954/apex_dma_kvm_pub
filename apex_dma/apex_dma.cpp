@@ -756,30 +756,30 @@ void DoActions() {
         if (g_spectators > 6) {
             rainbowColor(frame_number, highlight_color);    //大于6人观战彩色
             weapon_glow = true;
-            weapon_draw = true;
+            weapon_draw = false;
         }
         else if (g_spectators > 4) {
             highlight_color = { 1, 0, 0 }; //大于4人红色
-            weapon_glow = true;
+            weapon_glow = false;
         }
         else if (g_spectators > 2) {
             highlight_color = { 1, 0.6, 0 };   //3-4人橙色
-            weapon_glow = true;
+            weapon_glow = false;
         }
         else if (g_spectators > 0) {
             highlight_color = { 0, 0.4, 1 };  //1-2人蓝色
-            weapon_glow = true;
+            weapon_glow = false;
         }
         else if (g_allied_spectators > 0) {    //没有敌人但是队友观战绿色
           highlight_color = {0, 1, 0};
-          weapon_glow = true;
+          weapon_glow = false;
         } 
         else {
             weapon_glow = false;            //没人观战不发光
         }
         LPlayer.glow_weapon_model(weapon_glow, weapon_draw, highlight_color);
       } else {
-        LPlayer.glow_weapon_model(false, true, {0, 0, 0});
+        LPlayer.glow_weapon_model(false, false, {0, 0, 0});
       }
     }
   }
