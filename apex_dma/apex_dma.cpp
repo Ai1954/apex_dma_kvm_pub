@@ -1206,16 +1206,16 @@ static void item_glow_t() {
             125,              // OutlineFunction OutlineFunction
                               // HIGHLIGHT_OUTLINE_LOOT_SCANNED
             64, 64};
-        if (g_settings.loot.lightbackpack && ItemID == 207) {               //白包
+        if (g_settings.loot.lightbackpack && ItemID == 219) {               //白包
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.medbackpack && ItemID == 208) {          //蓝包
+        } else if (g_settings.loot.medbackpack && ItemID == 220) {          //蓝包
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.heavybackpack && ItemID == 209) {        //紫包
+        } else if (g_settings.loot.heavybackpack && ItemID == 221) {        //紫包
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.goldbackpack && ItemID == 210) {         //金包
+        } else if (g_settings.loot.goldbackpack && ItemID == 222) {         //金包
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
         } else if (g_settings.loot.shieldupgrade1 &&
@@ -1236,22 +1236,22 @@ static void item_glow_t() {
         } else if (g_settings.loot.shieldupgrade5 && ItemID == 536870912201) {    //红甲
           std::array<float, 3> highlightParameter = {1, 0, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 67);
-        } else if (g_settings.loot.shieldupgradehead1 && ItemID == 188) {       //白头
+        } else if (g_settings.loot.shieldupgradehead1 && ItemID == 195) {       //白头
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.shieldupgradehead2 && ItemID == 189) {
+        } else if (g_settings.loot.shieldupgradehead2 && ItemID == 196) {
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.shieldupgradehead3 && ItemID == 190) {
+        } else if (g_settings.loot.shieldupgradehead3 && ItemID == 197) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.shieldupgradehead4 && ItemID == 191) {     //金头
+        } else if (g_settings.loot.shieldupgradehead4 && ItemID == 198) {     //金头
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.accelerant && ItemID == 182) {             //绝招加速剂
+        } else if (g_settings.loot.accelerant && ItemID == 189) {             //绝招加速剂
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.phoenix && ItemID == 183) {                //凤凰
+        } else if (g_settings.loot.phoenix && ItemID == 190) {                //凤凰
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
         } else if (g_settings.loot.skull &&
@@ -1285,16 +1285,16 @@ static void item_glow_t() {
               64, 64};
           std::array<float, 3> highlightParameter = {1, 0, 0};
           item.enableGlow(highlightMode, highlightParameter, 67);
-        } else if (g_settings.loot.healthlarge && ItemID == 184) {        //大药包
+        } else if (g_settings.loot.healthlarge && ItemID == 191) {        //大药包
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.healthsmall && ItemID == 185) {
+        } else if (g_settings.loot.healthsmall && ItemID == 192) {
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.shieldbattsmall && ItemID == 187) {
+        } else if (g_settings.loot.shieldbattsmall && ItemID == 194) {
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.shieldbattlarge && ItemID == 186) {      //大电
+        } else if (g_settings.loot.shieldbattlarge && ItemID == 193) {      //大电
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
         } else if (g_settings.loot.sniperammo && ItemID == 144) {           //狙击弹药
@@ -1303,7 +1303,7 @@ static void item_glow_t() {
         } else if (g_settings.loot.heavyammo && ItemID == 143) {            //重型弹药
           std::array<float, 3> highlightParameter = {0.2667, 0.5333, 0.4353};   //改成墨绿色
           item.enableGlow(highlightFunctionBits, highlightParameter, 65);
-        } else if (g_settings.loot.optic1xhcog && ItemID == 215) {          //1倍镜
+        } else if (g_settings.loot.optic1xhcog && ItemID == 227) {          //1倍镜
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
         } else if (g_settings.loot.lightammo && ItemID == 140) {            //轻型子弹
@@ -1315,165 +1315,165 @@ static void item_glow_t() {
         } else if (g_settings.loot.shotgunammo && ItemID == 142) {          //霰弹子弹
           std::array<float, 3> highlightParameter = {0.5, 0.0862, 0};          //暗红
           item.enableGlow(highlightFunctionBits, highlightParameter, 67);
-        } else if (g_settings.loot.lasersight1 && ItemID == 229) {          //激光瞄准器，以下3个等级
+        } else if (g_settings.loot.lasersight1 && ItemID == 241) {          //激光瞄准器，以下3个等级
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.lasersight2 && ItemID == 230) {
+        } else if (g_settings.loot.lasersight2 && ItemID == 242) {
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.lasersight3 && ItemID == 231) {
+        } else if (g_settings.loot.lasersight3 && ItemID == 243) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.sniperammomag1 && ItemID == 244) {     //狙击弹匣，以下四个等级
+        } else if (g_settings.loot.sniperammomag1 && ItemID == 256) {     //狙击弹匣，以下四个等级
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.sniperammomag2 && ItemID == 245) {
+        } else if (g_settings.loot.sniperammomag2 && ItemID == 257) {
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.sniperammomag3 && ItemID == 246) {
+        } else if (g_settings.loot.sniperammomag3 && ItemID == 258) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.sniperammomag4 && ItemID == 247) {
+        } else if (g_settings.loot.sniperammomag4 && ItemID == 259) {
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.energyammomag1 && ItemID == 240) {     //能量弹匣，四个等级
+        } else if (g_settings.loot.energyammomag1 && ItemID == 252) {     //能量弹匣，四个等级
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.energyammomag2 && ItemID == 241) {
+        } else if (g_settings.loot.energyammomag2 && ItemID == 253) {
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.energyammomag3 && ItemID == 242) {
+        } else if (g_settings.loot.energyammomag3 && ItemID == 254) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.energyammomag4 && ItemID == 243) {
+        } else if (g_settings.loot.energyammomag4 && ItemID == 255) {
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.stocksniper1 && ItemID == 255) {       //狙击枪托
+        } else if (g_settings.loot.stocksniper1 && ItemID == 267) {       //狙击枪托
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.stocksniper2 && ItemID == 256) {
+        } else if (g_settings.loot.stocksniper2 && ItemID == 268) {
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.stocksniper3 && ItemID == 257) {
+        } else if (g_settings.loot.stocksniper3 && ItemID == 269) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.stockregular1 && ItemID == 252) {    //标准枪托
+        } else if (g_settings.loot.stockregular1 && ItemID == 264) {    //标准枪托
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.stockregular2 && ItemID == 253) {
+        } else if (g_settings.loot.stockregular2 && ItemID == 265) {
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.stockregular3 && ItemID == 254) {
+        } else if (g_settings.loot.stockregular3 && ItemID == 266) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.shielddown1 && ItemID == 203) {
+        } else if (g_settings.loot.shielddown1 && ItemID == 215) {
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.shielddown2 && ItemID == 204) {
+        } else if (g_settings.loot.shielddown2 && ItemID == 216) {
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.shielddown3 && ItemID == 205) {
+        } else if (g_settings.loot.shielddown3 && ItemID == 217) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.shielddown4 && ItemID == 206) {
+        } else if (g_settings.loot.shielddown4 && ItemID == 218) {
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.lightammomag1 && ItemID == 232) {      //轻型弹匣
+        } else if (g_settings.loot.lightammomag1 && ItemID == 244) {      //轻型弹匣
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.lightammomag2 && ItemID == 233) {
+        } else if (g_settings.loot.lightammomag2 && ItemID == 245) {
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.lightammomag3 && ItemID == 234) {
+        } else if (g_settings.loot.lightammomag3 && ItemID == 246) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.lightammomag4 && ItemID == 235) {
+        } else if (g_settings.loot.lightammomag4 && ItemID == 247) {
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.heavyammomag1 && ItemID == 236) {     //重型弹匣
+        } else if (g_settings.loot.heavyammomag1 && ItemID == 248) {     //重型弹匣
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.heavyammomag2 && ItemID == 237) {
+        } else if (g_settings.loot.heavyammomag2 && ItemID == 249) {
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.heavyammomag3 && ItemID == 238) {
+        } else if (g_settings.loot.heavyammomag3 && ItemID == 250) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.heavyammomag4 && ItemID == 239) {
+        } else if (g_settings.loot.heavyammomag4 && ItemID == 251) {
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.optic2xhcog && ItemID == 216) {      //2倍镜
+        } else if (g_settings.loot.optic2xhcog && ItemID == 228) {      //2倍镜
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.opticholo1x && ItemID == 217) {      //圆形1倍镜
+        } else if (g_settings.loot.opticholo1x && ItemID == 229) {      //圆形1倍镜
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.opticholo1x2x && ItemID == 218) {    //1x2x切换
+        } else if (g_settings.loot.opticholo1x2x && ItemID == 230) {    //1x2x切换
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.opticthreat && ItemID == 219) {      //金1倍
+        } else if (g_settings.loot.opticthreat && ItemID == 231) {      //金1倍
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.optic3xhcog && ItemID == 220) {        //3倍镜
+        } else if (g_settings.loot.optic3xhcog && ItemID == 232) {        //3倍镜
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.optic2x4x && ItemID == 221) {
+        } else if (g_settings.loot.optic2x4x && ItemID == 233) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.opticsniper6x && ItemID == 222) {      //6倍镜
+        } else if (g_settings.loot.opticsniper6x && ItemID == 234) {      //6倍镜
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.opticsniper4x8x && ItemID == 223) {
+        } else if (g_settings.loot.opticsniper4x8x && ItemID == 235) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.opticsniperthreat && ItemID == 224) {    //金狙击镜
+        } else if (g_settings.loot.opticsniperthreat && ItemID == 236) {    //金狙击镜
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.suppressor1 && ItemID == 225) {        //枪管？
+        } else if (g_settings.loot.suppressor1 && ItemID == 237) {        //枪管？
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.suppressor2 && ItemID == 226) {
+        } else if (g_settings.loot.suppressor2 && ItemID == 238) {
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.suppressor3 && ItemID == 227) {
+        } else if (g_settings.loot.suppressor3 && ItemID == 239) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.turbo_charger && ItemID == 258) {      //涡轮增压器
+        } else if (g_settings.loot.turbo_charger && ItemID == 270) {      //涡轮增压器
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.skull_piecer && ItemID == 260) {       //穿颅器
+        } else if (g_settings.loot.skull_piecer && ItemID == 272) {       //穿颅器
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.hammer_point && ItemID == 263) {      //锤击点
+        } else if (g_settings.loot.hammer_point && ItemID == 276) {      //锤击点
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.disruptor_rounds && ItemID == 262) {     //干扰器
+        } else if (g_settings.loot.disruptor_rounds && ItemID == 275) {     //干扰器
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.boosted_loader && ItemID == 272) {       //加速装填器
+        } else if (g_settings.loot.boosted_loader && ItemID == 285) {       //加速装填器
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
-        } else if (g_settings.loot.shotgunbolt1 && ItemID == 248) {               //霰弹枪栓
+        } else if (g_settings.loot.shotgunbolt1 && ItemID == 260) {               //霰弹枪栓
           std::array<float, 3> highlightParameter = {1, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 72);
-        } else if (g_settings.loot.shotgunbolt2 && ItemID == 249) {
+        } else if (g_settings.loot.shotgunbolt2 && ItemID == 261) {
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 69);
-        } else if (g_settings.loot.shotgunbolt3 && ItemID == 250) {
+        } else if (g_settings.loot.shotgunbolt3 && ItemID == 262) {
           std::array<float, 3> highlightParameter = {0.2941, 0, 0.5098};
           item.enableGlow(highlightFunctionBits, highlightParameter, 74);
-        } else if (g_settings.loot.shotgunbolt4 && ItemID == 251) {
+        } else if (g_settings.loot.shotgunbolt4 && ItemID == 263) {
           std::array<float, 3> highlightParameter = {1, 0.8431, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 75);
         }
         // Nades
-        else if (g_settings.loot.grenade_frag && ItemID == 213) {             //破片手雷
+        else if (g_settings.loot.grenade_frag && ItemID == 223) {             //破片手雷
           std::array<float, 3> highlightParameter = {1, 0, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 67);
-        } else if (g_settings.loot.grenade_thermite && ItemID == 212) {         //铝热剂
+        } else if (g_settings.loot.grenade_thermite && ItemID == 224) {         //铝热剂
           std::array<float, 3> highlightParameter = {1, 0, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 67);
-        } else if (g_settings.loot.grenade_arc_star && ItemID == 214) {           //电弧星
+        } else if (g_settings.loot.grenade_arc_star && ItemID == 225) {           //电弧星
           std::array<float, 3> highlightParameter = {0, 0, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 70);
         }
@@ -1481,7 +1481,7 @@ static void item_glow_t() {
         else if (g_settings.loot.weapon_kraber && ItemID == 1) {               //克莱伯
           std::array<float, 3> highlightParameter = {1, 0, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 67);
-        } else if (g_settings.loot.weapon_mastiff && ItemID == 3) {               //敖犬
+        } else if (g_settings.loot.weapon_mastiff && ItemID == 2) {               //敖犬
           std::array<float, 3> highlightParameter = {1, 0, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 67);
         } else if (g_settings.loot.weapon_lstar && ItemID == 7) {
@@ -1514,7 +1514,7 @@ static void item_glow_t() {
         } else if (g_settings.loot.weapon_r99 && ItemID == 49) {
           std::array<float, 3> highlightParameter = {1, 0.5490, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 66);
-        } else if (g_settings.loot.weapon_prowler && ItemID == 56) {             //猎兽
+        } else if (g_settings.loot.weapon_prowler && ItemID == 54) {             //猎兽
           std::array<float, 3> highlightParameter = {0, 1, 1};
           item.enableGlow(highlightFunctionBits, highlightParameter, 65);
         } else if (g_settings.loot.weapon_volt && ItemID == 60) {               //电能冲锋枪
@@ -1532,13 +1532,13 @@ static void item_glow_t() {
         } else if (g_settings.loot.weapon_r301 && ItemID == 80) {
           std::array<float, 3> highlightParameter = {1, 0.5490, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 66);
-        } else if (g_settings.loot.weapon_eva8 && ItemID == 85) {
+        } else if (g_settings.loot.weapon_eva8 && ItemID == 86) {
           std::array<float, 3> highlightParameter = {0.5, 0.0862, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 67);
-        } else if (g_settings.loot.weapon_peacekeeper && ItemID == 90) {
+        } else if (g_settings.loot.weapon_peacekeeper && ItemID == 91) {
           std::array<float, 3> highlightParameter = {0.5, 0.0862, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 67);
-        } else if (g_settings.loot.weapon_mozambique && ItemID == 95) {
+        } else if (g_settings.loot.weapon_mozambique && ItemID == 96) {
           std::array<float, 3> highlightParameter = { 0.5, 0.0862, 0};
           item.enableGlow(highlightFunctionBits, highlightParameter, 67);
         } else if (g_settings.loot.weapon_wingman && ItemID == 106) {           //小帮手
